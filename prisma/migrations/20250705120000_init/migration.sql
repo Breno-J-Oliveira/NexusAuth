@@ -1,3 +1,12 @@
+-- CreateEnum
+CREATE TYPE "Role" AS ENUM ('ADMIN', 'MANAGER', 'USER');
+
+-- CreateEnum
+CREATE TYPE "Plan" AS ENUM ('FREE', 'PRO', 'ENTERPRISE');
+
+-- CreateEnum
+CREATE TYPE "AuditAction" AS ENUM ('LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'REGISTER', 'PASSWORD_CHANGED', 'PASSWORD_RESET_REQUESTED', 'PASSWORD_RESET_COMPLETED', 'EMAIL_VERIFIED', 'TWO_FACTOR_ENABLED', 'TWO_FACTOR_DISABLED', 'TWO_FACTOR_CHALLENGE', 'SESSION_REVOKED', 'GLOBAL_LOGOUT', 'IMPERSONATION_STARTED', 'IMPERSONATION_ENDED', 'API_KEY_CREATED', 'API_KEY_REVOKED', 'TENANT_USER_INVITED', 'TENANT_USER_REMOVED');
+
 -- CreateTable
 CREATE TABLE "Tenant" (
     "id" TEXT NOT NULL,
@@ -76,6 +85,7 @@ CREATE TABLE "ApiKey" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "key" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "tenantId" TEXT,
     "permissions" TEXT[],
     "active" BOOLEAN NOT NULL DEFAULT true,
@@ -126,6 +136,7 @@ CREATE TABLE "EmailVerification" (
 -- CreateTable
 CREATE TABLE "MagicLink" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "token" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
@@ -134,15 +145,6 @@ CREATE TABLE "MagicLink" (
 
     CONSTRAINT "MagicLink_pkey" PRIMARY KEY ("id")
 );
-
--- CreateEnum
-CREATE TYPE "Role" AS ENUM ('ADMIN', 'MANAGER', 'USER');
-
--- CreateEnum
-CREATE TYPE "Plan" AS ENUM ('FREE', 'PRO', 'ENTERPRISE');
-
--- CreateEnum
-CREATE TYPE "AuditAction" AS ENUM ('LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'REGISTER', 'PASSWORD_CHANGED', 'PASSWORD_RESET_REQUESTED', 'PASSWORD_RESET_COMPLETED', 'EMAIL_VERIFIED', 'TWO_FACTOR_ENABLED', 'TWO_FACTOR_DISABLED', 'TWO_FACTOR_CHALLENGE', 'SESSION_REVOKED', 'GLOBAL_LOGOUT', 'IMPERSONATION_STARTED', 'IMPERSONATION_ENDED', 'API_KEY_CREATED', 'API_KEY_REVOKED', 'TENANT_USER_INVITED', 'TENANT_USER_REMOVED');
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
@@ -190,6 +192,9 @@ CREATE UNIQUE INDEX "ApiKey_key_key" ON "ApiKey"("key");
 CREATE INDEX "ApiKey_tenantId_idx" ON "ApiKey"("tenantId");
 
 -- CreateIndex
+CREATE INDEX "ApiKey_userId_idx" ON "ApiKey"("userId");
+
+-- CreateIndex
 CREATE INDEX "Webhook_tenantId_idx" ON "Webhook"("tenantId");
 
 -- CreateIndex
@@ -212,6 +217,9 @@ CREATE INDEX "EmailVerification_expiresAt_idx" ON "EmailVerification"("expiresAt
 
 -- CreateIndex
 CREATE UNIQUE INDEX "MagicLink_token_key" ON "MagicLink"("token");
+
+-- CreateIndex
+CREATE INDEX "MagicLink_userId_idx" ON "MagicLink"("userId");
 
 -- CreateIndex
 CREATE INDEX "MagicLink_email_idx" ON "MagicLink"("email");
@@ -238,6 +246,9 @@ ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userI
 ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Webhook" ADD CONSTRAINT "Webhook_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -245,3 +256,6 @@ ALTER TABLE "PasswordReset" ADD CONSTRAINT "PasswordReset_userId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "EmailVerification" ADD CONSTRAINT "EmailVerification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MagicLink" ADD CONSTRAINT "MagicLink_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

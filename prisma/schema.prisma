@@ -159,6 +159,8 @@ model ApiKey {
   id          String   @id @default(uuid())
   name        String   // nome identificador da chave
   key         String   @unique // hash da chave (prefixo nexus_xxx...)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   tenantId    String?
   tenant      Tenant?  @relation(fields: [tenantId], references: [id])
   permissions String[] // permissões específicas da chave
@@ -168,6 +170,7 @@ model ApiKey {
   createdAt   DateTime @default(now())
 
   @@index([tenantId])
+  @@index([userId])
 }
 
 model Webhook {
@@ -211,12 +214,15 @@ model EmailVerification {
 
 model MagicLink {
   id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
   email     String
   token     String   @unique
   expiresAt DateTime // 15 minutos
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  @@index([userId])
   @@index([email])
   @@index([expiresAt])
 }
