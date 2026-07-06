@@ -40,7 +40,7 @@ export class JwtService {
       this.privateKey,
       {
         algorithm: 'RS256',
-        expiresIn: this.accessExpiresIn,
+        expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
       },
     );

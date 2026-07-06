@@ -57,7 +57,7 @@ export class AuthController {
 
   @Post('logout')
   async logout(@CurrentUser() user: any, @Req() req: Request) {
-    const token = req.headers.authorization?.substring(7);
+    const token = req.headers.authorization?.substring(7) ?? '';
     return this.authService.logout(user, token);
   }
 
