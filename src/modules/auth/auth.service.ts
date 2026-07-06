@@ -4,7 +4,6 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -203,7 +202,7 @@ export class AuthService {
       throw new UnauthorizedException({
         code: 'REFRESH_TOKEN_EXPIRED',
         message: 'Refresh token has expired',
-    });
+      });
     }
 
     await this.prisma.refreshToken.update({
@@ -215,7 +214,10 @@ export class AuthService {
       where: { id: stored.userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
     }
 
     const newRefreshToken = crypto.randomUUID();
@@ -402,7 +404,10 @@ export class AuthService {
       select: { id: true, email: true, name: true, role: true },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
     }
     return user;
   }
