@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { refreshSchema, RefreshDto } from './dto/refresh.dto';
 import { changePasswordSchema, ChangePasswordDto } from './dto/change-password.dto';
 import { forgotPasswordSchema, ForgotPasswordDto } from './dto/forgot-password.dto';
 import { resetPasswordSchema, ResetPasswordDto } from './dto/reset-password.dto';
+import { magicLinkSchema, MagicLinkDto } from './dto/magic-link.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
@@ -72,6 +74,20 @@ export class AuthController {
     @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordDto,
   ) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Public()
+  @Post('magic-link')
+  async magicLink(
+    @Body(new ZodValidationPipe(magicLinkSchema)) dto: MagicLinkDto,
+  ) {
+    return this.authService.magicLink(dto);
+  }
+
+  @Public()
+  @Get('magic-link/verify')
+  async verifyMagicLink(@Query('token') token: string) {
+    return this.authService.verifyMagicLink(token);
   }
 
   @Post('logout')

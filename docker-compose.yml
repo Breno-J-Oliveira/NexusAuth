@@ -43,16 +43,7 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexusauth?schema=public
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: http://localhost:3000,http://localhost:4000
-      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
-      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
-      JWT_ACCESS_EXPIRES_IN: 15m
-      JWT_REFRESH_EXPIRES_IN: 7d
-      JWT_ISSUER: nexusauth
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy

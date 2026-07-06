@@ -8,6 +8,7 @@ import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwksModule } from './modules/jwks/jwks.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
+import { OAuthModule } from './modules/oauth/oauth.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TwoFactorModule } from './modules/two-factor/two-factor.module';
     AuthModule,
     JwksModule,
     TwoFactorModule,
+    OAuthModule,
   ],
 })
 export class AppModule {}

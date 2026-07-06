@@ -18,6 +18,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { MagicLinkDto } from './dto/magic-link.dto';
 
 @Injectable()
 export class AuthService {
@@ -405,6 +406,109 @@ export class AuthService {
     ]);
 
     return { message: 'Password reset successfully' };
+  }
+
+  async magicLink(dto: MagicLinkDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (user) {
+      const token = crypto.randomUUID();
+      await this.prisma.magicLink.create({
+        data: {
+          userId: user.id,
+          email: dto.email,
+          token,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      });
+
+      console.log(
+        `[Magic Link] Login link: http://localhost:3000/auth/magic-link/verify?token=${token}`,
+      );
+    }
+
+    return { message: 'If the email exists, a magic link has been sent' };
+  }
+
+  async verifyMagicLink(token: string) {
+    const magicLink = await this.prisma.magicLink.findUnique({
+      where: { token },
+    });
+
+    if (!magicLink) {
+      throw new BadRequestException({
+        code: 'INVALID_MAGIC_LINK',
+        message: 'Invalid or expired magic link',
+      });
+    }
+
+    if (magicLink.used) {
+      throw new BadRequestException({
+        code: 'MAGIC_LINK_ALREADY_USED',
+        message: 'Magic link has already been used',
+      });
+    }
+
+    if (magicLink.expiresAt < new Date()) {
+      throw new BadRequestException({
+        code: 'MAGIC_LINK_EXPIRED',
+        message: 'Magic link has expired',
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: magicLink.userId },
+    });
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    await this.prisma.magicLink.update({
+      where: { id: magicLink.id },
+      data: { used: true },
+    });
+
+    if (user.twoFactorEnabled) {
+      const challengeToken = this.jwtService.signChallengeToken({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      return { requiresTwoFactor: true, challengeToken };
+    }
+
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        device: 'Magic Link',
+        ipAddress: 'Unknown',
+        userAgent: 'Unknown',
+      },
+    });
+
+    const refreshToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        sessionId: session.id,
+        expiresAt,
+      },
+    });
+
+    const accessToken = this.jwtService.signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return { accessToken, refreshToken };
   }
 
   async me(userId: string) {

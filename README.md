@@ -523,17 +523,17 @@ App: usuário logado
 - [ ] Erros padronizados com códigos
 
 ### Fase 4 — 2FA
-- [ ] Gerar QR code para TOTP (otplib)
-- [ ] Verificar código TOTP e ativar 2FA
-- [ ] Desativar 2FA (exige senha)
-- [ ] Challenge no login com 2FA
-- [ ] Códigos de backup (10 códigos de uso único)
+- [x] Gerar QR code para TOTP (otplib)
+- [x] Verificar código TOTP e ativar 2FA
+- [x] Desativar 2FA (exige senha)
+- [x] Challenge no login com 2FA
+- [x] Códigos de backup (10 códigos de uso único)
 
 ### Fase 5 — OAuth2 & Magic Link
-- [ ] Login com Google (passport-google-oauth20)
-- [ ] Login com GitHub (passport-github2)
-- [ ] Magic link (login sem senha via email)
-- [ ] Vincular conta OAuth2 a usuário existente
+- [x] Login com Google (passport-google-oauth20)
+- [x] Login com GitHub (passport-github2)
+- [x] Magic link (login sem senha via email)
+- [x] Vincular conta OAuth2 a usuário existente
 
 ### Fase 6 — Sessões & Audit
 - [ ] Gestão de sessões (device, IP, localização, user agent)
