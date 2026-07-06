@@ -34,4 +34,4 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+CMD ["sh", "-c", "mkdir -p /app/keys && if [ ! -f /app/keys/private.pem ]; then openssl genrsa -out /app/keys/private.pem 2048 && openssl rsa -in /app/keys/private.pem -pubout -out /app/keys/public.pem; fi && npx prisma migrate deploy && node dist/main"]

@@ -1,19 +1,13 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import Redis from 'ioredis';
+import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
-export class HealthService implements OnModuleDestroy {
-  private redis: Redis;
-
-  constructor(private prisma: PrismaService) {
-    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-    this.redis = new Redis(redisUrl);
-  }
-
-  async onModuleDestroy() {
-    await this.redis.quit();
-  }
+export class HealthService {
+  constructor(
+    private prisma: PrismaService,
+    private redisService: RedisService,
+  ) {}
 
   async checkAll() {
     const [db, redis] = await Promise.allSettled([
@@ -45,7 +39,7 @@ export class HealthService implements OnModuleDestroy {
   }
 
   private async checkRedis(): Promise<void> {
-    const pong = await this.redis.ping();
+    const pong = await this.redisService.ping();
     if (pong !== 'PONG') {
       throw new Error(`Redis returned: ${pong}`);
     }
