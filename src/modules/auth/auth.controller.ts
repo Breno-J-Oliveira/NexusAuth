@@ -15,6 +15,9 @@ import {
 } from './dto/register.dto';
 import { loginSchema, LoginDto } from './dto/login.dto';
 import { refreshSchema, RefreshDto } from './dto/refresh.dto';
+import { changePasswordSchema, ChangePasswordDto } from './dto/change-password.dto';
+import { forgotPasswordSchema, ForgotPasswordDto } from './dto/forgot-password.dto';
+import { resetPasswordSchema, ResetPasswordDto } from './dto/reset-password.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
@@ -55,10 +58,34 @@ export class AuthController {
     return this.authService.refresh(dto);
   }
 
+  @Public()
+  @Post('forgot-password')
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) dto: ForgotPasswordDto,
+  ) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordDto,
+  ) {
+    return this.authService.resetPassword(dto);
+  }
+
   @Post('logout')
   async logout(@CurrentUser() user: any, @Req() req: Request) {
     const token = req.headers.authorization?.substring(7) ?? '';
     return this.authService.logout(user, token);
+  }
+
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser() user: any,
+    @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.sub, dto);
   }
 
   @Get('me')

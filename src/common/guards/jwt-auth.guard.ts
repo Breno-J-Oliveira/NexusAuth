@@ -28,7 +28,10 @@ export class JwtAuthGuard implements CanActivate {
     const authHeader = request.headers.authorization;
 
     if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid authorization header');
+      throw new UnauthorizedException({
+        code: 'MISSING_AUTH_HEADER',
+        message: 'Missing or invalid authorization header',
+      });
     }
 
     const token = authHeader.substring(7);
@@ -40,14 +43,20 @@ export class JwtAuthGuard implements CanActivate {
         `blacklist:${payload.jti}`,
       );
       if (isBlacklisted) {
-        throw new UnauthorizedException('Token has been revoked');
+        throw new UnauthorizedException({
+          code: 'TOKEN_REVOKED',
+          message: 'Token has been revoked',
+        });
       }
 
       request.user = payload;
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
-      throw new UnauthorizedException('Invalid or expired token');
+      throw new UnauthorizedException({
+        code: 'TOKEN_INVALID',
+        message: 'Invalid or expired token',
+      });
     }
   }
 }

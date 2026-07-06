@@ -3,6 +3,10 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -12,6 +16,9 @@ import { JwtService } from './jwt.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -26,7 +33,10 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException({
+        code: 'EMAIL_ALREADY_REGISTERED',
+        message: 'Email already registered',
+      });
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -36,6 +46,7 @@ export class AuthService {
         email: dto.email,
         password: hashedPassword,
         name: dto.name,
+        passwordHistory: [hashedPassword],
       },
     });
 
@@ -59,27 +70,78 @@ export class AuthService {
     };
   }
 
+  async checkRateLimit(ipAddress: string): Promise<void> {
+    const key = `ratelimit:login:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) {
+      await this.redisService.expire(key, 60);
+    }
+    if (count > 5) {
+      const ttl = await this.redisService.ttl(key);
+      throw new HttpException(
+        {
+          code: 'RATE_LIMITED',
+          message: 'Too many login attempts. Please try again later.',
+          retryAfter: ttl,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  async checkLockout(email: string): Promise<void> {
+    const key = `lockout:${email}`;
+    const count = await this.redisService.get(key);
+    if (count && parseInt(count, 10) >= 5) {
+      const ttl = await this.redisService.ttl(key);
+      throw new HttpException(
+        {
+          code: 'ACCOUNT_LOCKED',
+          message: 'Account locked due to too many failed attempts.',
+          retryAfter: ttl,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
   async login(
     dto: LoginDto,
     device: string,
     ipAddress: string,
     userAgent: string,
   ) {
+    await this.checkRateLimit(ipAddress);
+    await this.checkLockout(dto.email);
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      await this.recordFailedLogin(dto.email);
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid credentials',
+      });
     }
 
     if (!user.password) {
-      throw new UnauthorizedException('Account has no password set');
+      throw new UnauthorizedException({
+        code: 'NO_PASSWORD_SET',
+        message: 'Account has no password set',
+      });
     }
 
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
-      throw new UnauthorizedException('Invalid credentials');
+      await this.recordFailedLogin(dto.email);
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid credentials',
+      });
     }
+
+    await this.redisService.del(`lockout:${dto.email}`);
 
     const session = await this.prisma.session.create({
       data: {
@@ -110,21 +172,38 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  private async recordFailedLogin(email: string): Promise<void> {
+    const key = `lockout:${email}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) {
+      await this.redisService.expire(key, 15 * 60);
+    }
+  }
+
   async refresh(dto: RefreshDto) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: dto.refreshToken },
     });
 
     if (!stored) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'Invalid refresh token',
+      });
     }
 
     if (stored.revoked) {
-      throw new UnauthorizedException('Refresh token has been revoked');
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_REVOKED',
+        message: 'Refresh token has been revoked',
+      });
     }
 
     if (stored.expiresAt < new Date()) {
-      throw new UnauthorizedException('Refresh token has expired');
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_EXPIRED',
+        message: 'Refresh token has expired',
+    });
     }
 
     await this.prisma.refreshToken.update({
@@ -176,6 +255,145 @@ export class AuthService {
     });
 
     return { message: 'Logged out successfully' };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    if (!user.password) {
+      throw new BadRequestException({
+        code: 'NO_PASSWORD_SET',
+        message: 'Account has no password set',
+      });
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!valid) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Current password is incorrect',
+      });
+    }
+
+    for (const oldHash of user.passwordHistory) {
+      const matches = await bcrypt.compare(dto.newPassword, oldHash);
+      if (matches) {
+        throw new BadRequestException({
+          code: 'PASSWORD_IN_HISTORY',
+          message: 'New password matches one of the last 5 passwords',
+        });
+      }
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    const newHistory = [...user.passwordHistory, newHash].slice(-5);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: newHash,
+        passwordHistory: newHistory,
+      },
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (user) {
+      const token = crypto.randomUUID();
+      await this.prisma.passwordReset.create({
+        data: {
+          userId: user.id,
+          token,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      });
+
+      console.log(
+        `[Password Reset] Link: http://localhost:3000/auth/reset-password?token=${token}`,
+      );
+    }
+
+    return { message: 'If the email exists, a reset link has been sent' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { token: dto.token },
+    });
+
+    if (!reset) {
+      throw new BadRequestException({
+        code: 'INVALID_RESET_TOKEN',
+        message: 'Invalid or expired reset token',
+      });
+    }
+
+    if (reset.used) {
+      throw new BadRequestException({
+        code: 'RESET_TOKEN_ALREADY_USED',
+        message: 'Reset token has already been used',
+      });
+    }
+
+    if (reset.expiresAt < new Date()) {
+      throw new BadRequestException({
+        code: 'RESET_TOKEN_EXPIRED',
+        message: 'Reset token has expired',
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: reset.userId },
+    });
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    for (const oldHash of user.passwordHistory) {
+      const matches = await bcrypt.compare(dto.newPassword, oldHash);
+      if (matches) {
+        throw new BadRequestException({
+          code: 'PASSWORD_IN_HISTORY',
+          message: 'New password matches one of the last 5 passwords',
+        });
+      }
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    const newHistory = [...user.passwordHistory, newHash].slice(-5);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: newHash,
+          passwordHistory: newHistory,
+        },
+      }),
+      this.prisma.passwordReset.update({
+        where: { id: reset.id },
+        data: { used: true },
+      }),
+    ]);
+
+    return { message: 'Password reset successfully' };
   }
 
   async me(userId: string) {

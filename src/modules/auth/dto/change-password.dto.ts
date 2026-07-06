@@ -7,10 +7,9 @@ const passwordSchema = z
   .regex(/[0-9]/, 'Password must contain at least one number')
   .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one symbol');
 
-export const registerSchema = z.object({
-  email: z.string().email(),
-  password: passwordSchema,
-  name: z.string().min(1),
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: passwordSchema,
 });
 
-export type RegisterDto = z.infer<typeof registerSchema>;
+export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
