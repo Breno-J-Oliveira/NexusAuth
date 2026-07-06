@@ -46,6 +46,23 @@ export class JwtService {
     );
   }
 
+  signChallengeToken(payload: {
+    sub: string;
+    email: string;
+    role: string;
+  }): string {
+    const jti = crypto.randomUUID();
+    return jwt.sign(
+      { ...payload, jti, type: '2fa-challenge' },
+      this.privateKey,
+      {
+        algorithm: 'RS256',
+        expiresIn: '5m',
+        issuer: this.issuer,
+      },
+    );
+  }
+
   verify(token: string): {
     sub: string;
     email: string;
@@ -57,6 +74,23 @@ export class JwtService {
     iss: string;
   } {
     return jwt.verify(token, this.publicKey, { issuer: this.issuer }) as any;
+  }
+
+  verifyChallenge(token: string): {
+    sub: string;
+    email: string;
+    role: string;
+    jti: string;
+    type: string;
+    exp: number;
+    iat: number;
+    iss: string;
+  } {
+    const payload = this.verify(token);
+    if (payload.type !== '2fa-challenge') {
+      throw new jwt.JsonWebTokenError('Invalid token type');
+    }
+    return payload;
   }
 
   getJwks() {

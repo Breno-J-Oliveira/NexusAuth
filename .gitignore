@@ -12,3 +12,5 @@ coverage/
 
 # Temp test files
 tmp_*.json
+test_*.json
+req_*.json

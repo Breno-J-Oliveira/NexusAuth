@@ -142,6 +142,15 @@ export class AuthService {
 
     await this.redisService.del(`lockout:${dto.email}`);
 
+    if (user.twoFactorEnabled) {
+      const challengeToken = this.jwtService.signChallengeToken({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      return { requiresTwoFactor: true, challengeToken };
+    }
+
     const session = await this.prisma.session.create({
       data: {
         userId: user.id,

@@ -7,6 +7,7 @@ import { RedisModule } from './redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwksModule } from './modules/jwks/jwks.module';
+import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { JwksModule } from './modules/jwks/jwks.module';
     HealthModule,
     AuthModule,
     JwksModule,
+    TwoFactorModule,
   ],
 })
 export class AppModule {}
