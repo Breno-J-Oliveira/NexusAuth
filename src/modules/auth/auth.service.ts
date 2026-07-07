@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { AuditService } from '../audit/audit.service';
 import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class AuthService {
@@ -30,6 +31,7 @@ export class AuthService {
     private jwtService: JwtService,
     private auditService: AuditService,
     private webhooksDispatcher: WebhooksDispatcher,
+    private metricsService: MetricsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -68,6 +70,7 @@ export class AuthService {
     );
 
     await this.auditService.log('REGISTER', { userId: user.id });
+    this.metricsService.authRegistrationsTotal.inc();
 
     await this.webhooksDispatcher.dispatch('user.registered', {
       userId: user.id,
@@ -137,6 +140,7 @@ export class AuthService {
         userAgent,
         success: false,
       });
+      this.metricsService.authLoginsTotal.inc({ status: 'failed' });
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid credentials',
@@ -160,6 +164,7 @@ export class AuthService {
         metadata: { reason: 'wrong_password' },
         success: false,
       });
+      this.metricsService.authLoginsTotal.inc({ status: 'failed' });
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid credentials',
@@ -226,6 +231,8 @@ export class AuthService {
       email: user.email,
       sessionId: session.id,
     }, user.tenantId);
+
+    this.metricsService.authLoginsTotal.inc({ status: 'success' });
 
     return { accessToken, refreshToken, sessionId: session.id };
   }
@@ -320,6 +327,7 @@ export class AuthService {
       permissions: user.permissions ?? undefined,
     });
 
+    this.metricsService.authRefreshTokensIssuedTotal.inc();
     return { accessToken, refreshToken: newRefreshToken };
   }
 

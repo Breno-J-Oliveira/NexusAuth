@@ -15,6 +15,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
     AdminModule,
     WebhooksModule,
     ApiKeysModule,
+    MetricsModule,
   ],
 })
 export class AppModule {}

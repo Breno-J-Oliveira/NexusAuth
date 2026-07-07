@@ -6,6 +6,8 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { MetricsInterceptor } from './common/interceptors/metrics.interceptor';
+import { MetricsService } from './modules/metrics/metrics.service';
 import { PrismaService } from './prisma/prisma.service';
 import { RedisService } from './redis/redis.service';
 
@@ -15,8 +17,9 @@ async function bootstrap() {
   // Security headers
   app.use(helmet());
 
-  // CORS configurável via env
+  // CORS configurável via env — fail-closed em produção
   const configService = app.get(ConfigService);
+  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const corsOrigins = configService
     .get<string>('CORS_ORIGINS', '')
     .split(',')
@@ -24,7 +27,7 @@ async function bootstrap() {
     .filter(Boolean);
 
   app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : true,
+    origin: corsOrigins.length > 0 ? corsOrigins : (nodeEnv === 'development' ? true : false),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   });
@@ -43,6 +46,10 @@ async function bootstrap() {
 
   // Global logging interceptor (Pino + correlation ID)
   app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Global metrics interceptor (Prometheus HTTP metrics)
+  const metricsService = app.get(MetricsService);
+  app.useGlobalInterceptors(new MetricsInterceptor(metricsService));
 
   // Graceful shutdown
   app.enableShutdownHooks();
@@ -67,26 +74,28 @@ async function bootstrap() {
   process.on('SIGTERM', () => handleShutdown('SIGTERM'));
   process.on('SIGINT', () => handleShutdown('SIGINT'));
 
-  // Swagger / OpenAPI
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('NexusAuth API')
-    .setDescription('Microsserviço de autenticação centralizada — JWT RS256, 2FA, OAuth, multi-tenant, webhooks, API keys')
-    .setVersion('0.1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'access-token',
-    )
-    .addApiKey(
-      { type: 'apiKey', name: 'x-api-key', in: 'header' },
-      'api-key',
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  // Swagger / OpenAPI — disabled in production
+  if (nodeEnv !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('NexusAuth API')
+      .setDescription('Microsserviço de autenticação centralizada — JWT RS256, 2FA, OAuth, multi-tenant, webhooks, API keys')
+      .setVersion('0.1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        'access-token',
+      )
+      .addApiKey(
+        { type: 'apiKey', name: 'x-api-key', in: 'header' },
+        'api-key',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+  }
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);

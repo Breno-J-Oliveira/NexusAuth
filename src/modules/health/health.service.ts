@@ -9,6 +9,39 @@ export class HealthService {
     private redisService: RedisService,
   ) {}
 
+  liveness() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  async readiness() {
+    const [db, redis] = await Promise.allSettled([
+      this.checkDatabase(),
+      this.checkRedis(),
+    ]);
+
+    const dbOk = db.status === 'fulfilled';
+    const redisOk = redis.status === 'fulfilled';
+    const allOk = dbOk && redisOk;
+
+    return {
+      status: allOk ? 'ok' : 'not_ready',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: {
+          status: dbOk ? 'ok' : 'error',
+          ...(db.status === 'rejected' && { error: db.reason?.message }),
+        },
+        redis: {
+          status: redisOk ? 'ok' : 'error',
+          ...(redis.status === 'rejected' && { error: redis.reason?.message }),
+        },
+      },
+    };
+  }
+
   async checkAll() {
     const [db, redis] = await Promise.allSettled([
       this.checkDatabase(),

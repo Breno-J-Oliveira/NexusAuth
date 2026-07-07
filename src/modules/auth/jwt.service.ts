@@ -101,7 +101,10 @@ export class JwtService {
     iat: number;
     iss: string;
   } {
-    return jwt.verify(token, this.publicKey, { issuer: this.issuer }) as any;
+    return jwt.verify(token, this.publicKey, {
+      algorithms: ['RS256'],
+      issuer: this.issuer,
+    }) as any;
   }
 
   verifyChallenge(token: string): {

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MetricsService } from '../metrics/metrics.service';
+import { validateWebhookUrl } from '../../common/utils/ssrf-guard';
 
 interface WebhookPayload {
   event: string;
@@ -14,7 +16,10 @@ export class WebhooksDispatcher {
   private readonly maxAttempts = 3;
   private readonly backoffMs = [1000, 5000, 15000];
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private metricsService: MetricsService,
+  ) {}
 
   async dispatch(event: string, data: Record<string, any>, tenantId?: string | null) {
     const webhooks = await this.prisma.webhook.findMany({
@@ -50,8 +55,16 @@ export class WebhooksDispatcher {
       .update(body)
       .digest('hex');
 
+    try {
+      await validateWebhookUrl(url);
+    } catch (err: any) {
+      this.logger.error(`Webhook ${webhookId} URL blocked by SSRF guard: ${err.message?.message ?? err.message}`);
+      this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
+      return;
+    }
+
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
-      const result = await this.deliver(url, body, signature, attempt);
+      const result = await this.deliver(url, body, signature, payload.event, attempt);
 
       await this.prisma.webhookDelivery.create({
         data: {
@@ -67,6 +80,7 @@ export class WebhooksDispatcher {
 
       if (result.success) {
         this.logger.log(`Webhook ${webhookId} delivered (attempt ${attempt})`);
+        this.metricsService.webhooksDispatchedTotal.inc({ status: 'success' });
         return;
       }
 
@@ -80,6 +94,7 @@ export class WebhooksDispatcher {
         this.logger.error(
           `Webhook ${webhookId} failed after ${this.maxAttempts} attempts`,
         );
+        this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
       }
     }
   }
@@ -88,6 +103,7 @@ export class WebhooksDispatcher {
     url: string,
     body: string,
     signature: string,
+    eventName: string,
     attempt: number,
   ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
     try {
@@ -99,7 +115,7 @@ export class WebhooksDispatcher {
         headers: {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
-          'X-Webhook-Event': body,
+          'X-Webhook-Event': eventName,
         },
         body,
         signal: controller.signal,

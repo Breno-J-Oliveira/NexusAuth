@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '../auth/jwt.service';
@@ -9,6 +9,7 @@ export interface OAuthProfile {
   providerId: string;
   email: string;
   name: string;
+  emailVerified: boolean;
 }
 
 @Injectable()
@@ -33,6 +34,12 @@ export class OAuthService {
       });
 
       if (user) {
+        if (!profile.emailVerified) {
+          throw new UnauthorizedException({
+            code: 'EMAIL_NOT_VERIFIED_BY_PROVIDER',
+            message: 'Email is not verified by the OAuth provider. Cannot link to existing account.',
+          });
+        }
         user = await this.prisma.user.update({
           where: { id: user.id },
           data: { [providerIdField]: profile.providerId },
@@ -59,10 +66,10 @@ export class OAuthService {
       return { requiresTwoFactor: true, challengeToken };
     }
 
-    return this.generateTokens(user.id, user.email, user.role, profile.provider);
+    return this.generateTokens(user.id, user.email, user.role, profile.provider, user.tenantId, user.permissions);
   }
 
-  private async generateTokens(userId: string, email: string, role: string, provider: string) {
+  private async generateTokens(userId: string, email: string, role: string, provider: string, tenantId?: string | null, permissions?: string[]) {
     const session = await this.prisma.session.create({
       data: {
         userId,
@@ -87,6 +94,8 @@ export class OAuthService {
       sub: userId,
       email,
       role,
+      tenantId: tenantId ?? undefined,
+      permissions: permissions ?? undefined,
     });
 
     await this.auditService.log('LOGIN', {

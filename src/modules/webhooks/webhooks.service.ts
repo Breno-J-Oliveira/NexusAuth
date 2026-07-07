@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
+import { validateWebhookUrl } from '../../common/utils/ssrf-guard';
 
 @Injectable()
 export class WebhooksService {
@@ -17,6 +18,8 @@ export class WebhooksService {
     if (!user) {
       throw new ForbiddenException({ code: 'USER_NOT_FOUND' });
     }
+
+    await validateWebhookUrl(dto.url);
 
     const secret = crypto.randomBytes(32).toString('hex');
 
@@ -61,6 +64,10 @@ export class WebhooksService {
     const webhook = await this.prisma.webhook.findUnique({ where: { id } });
     if (!webhook || webhook.userId !== userId) {
       throw new NotFoundException({ code: 'WEBHOOK_NOT_FOUND' });
+    }
+
+    if (dto.url) {
+      await validateWebhookUrl(dto.url);
     }
 
     const updated = await this.prisma.webhook.update({

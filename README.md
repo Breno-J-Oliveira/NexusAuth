@@ -566,11 +566,79 @@ App: usuário logado
 - [ ] App de teste na porta 4000
 
 ### Fase 10 — Observabilidade & Deploy
-- [ ] Métricas Prometheus (/metrics)
-- [ ] Health check detalhado (DB + Redis + SMTP)
-- [ ] CI/CD no GitHub Actions
+- [x] Métricas Prometheus (/metrics)
+- [x] Health check detalhado (DB + Redis + SMTP)
+- [x] CI/CD no GitHub Actions
 - [ ] Deploy (Railway ou Render)
 - [ ] Monitoramento de webhooks (dashboard de entregas)
+
+---
+
+## 🚀 Deploy
+
+### Variáveis de ambiente obrigatórias (produção)
+
+| Variável | Descrição | Exemplo |
+|----------|-----------|---------|
+| `DATABASE_URL` | String de conexão PostgreSQL | `postgresql://user:pass@host:5432/db` |
+| `REDIS_URL` | String de conexão Redis | `redis://host:6379` |
+| `JWT_PRIVATE_KEY_PATH` | Caminho da chave privada RS256 | `/app/keys/private.pem` |
+| `JWT_PUBLIC_KEY_PATH` | Caminho da chave pública RS256 | `/app/keys/public.pem` |
+| `CORS_ORIGINS` | Origens permitidas (separadas por vírgula) | `https://app1.com,https://app2.com` |
+| `GOOGLE_CLIENT_ID` | OAuth2 Google | `xxxxx.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | OAuth2 Google | `GOCSPX-xxxxx` |
+| `GOOGLE_CALLBACK_URL` | Callback Google | `https://api.domain.com/auth/google/callback` |
+| `GITHUB_CLIENT_ID` | OAuth2 GitHub | `Iv1.xxxxx` |
+| `GITHUB_CLIENT_SECRET` | OAuth2 GitHub | `xxxxx` |
+| `GITHUB_CALLBACK_URL` | Callback GitHub | `https://api.domain.com/auth/github/callback` |
+| `SMTP_HOST` | Servidor SMTP | `smtp.resend.com` |
+| `SMTP_PORT` | Porta SMTP | `587` |
+| `SMTP_USER` | Usuário SMTP | `apikey` |
+| `SMTP_PASS` | Senha SMTP | `re_xxxxx` |
+| `SMTP_FROM` | Email remetente | `noreply@domain.com` |
+
+### Gerando chaves RS256 em produção
+
+```bash
+mkdir -p keys
+openssl genrsa -out keys/private.pem 4096
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+chmod 600 keys/private.pem
+chmod 644 keys/public.pem
+```
+
+> Em produção, as chaves devem ser montadas como secrets (volume/Docker secret, k8s secret) — não geradas no container.
+
+### Checklist de segurança antes de ir ao ar
+
+- [ ] **Rotacionar todos os secrets**: JWT keys, OAuth secrets, SMTP credentials
+- [ ] **CORS restritivo**: configurar `CORS_ORIGINS` apenas com os domínios reais das apps
+- [ ] **HTTPS obrigatório**: reverse proxy (nginx/traefik) com TLS 1.2+
+- [ ] `NODE_ENV=production` definido
+- [ ] **Rate limiting ativo**: Redis acessível e configurado
+- [ ] **Chaves RS256 protegidas**: não commitar no repo, usar secrets management
+- [ ] **Database com senha forte**: usuário dedicado com permissões mínimas
+- [ ] **Redis com AUTH**: configurar `requirepass` em produção
+- [ ] **Logs estruturados ativos**: Pino configurado para JSON em produção
+- [ ] **Helmet ativo**: headers de segurança habilitados
+- [ ] **Backup do banco**: estratégia de backup automatizado
+- [ ] **Monitoramento**: Prometheus scraping `/metrics`, alertas configurados
+
+### Plataformas recomendadas
+
+- **Railway**: deploy direto do repo, suporte a Postgres + Redis gerenciados
+- **Render**: alternativa similar, free tier disponível
+- **Docker**: imagem pronta para qualquer orchestrator (k8s, ECS, etc.)
+
+### Health checks para orquestradores
+
+| Endpoint | Propósito | Comportamento |
+|----------|-----------|---------------|
+| `GET /health/live` | Liveness probe | 200 sempre que o processo responde — não verifica dependências |
+| `GET /health/ready` | Readiness probe | 200 se DB + Redis OK, 503 se alguma dependência falha |
+| `GET /health` | Health completo | 200 se tudo OK, 503 se degradado |
+
+> Configure liveness = `/health/live` e readiness = `/health/ready` no k8s/Render/Railway.
 
 ---
 

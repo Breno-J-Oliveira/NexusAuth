@@ -34,7 +34,9 @@ export class TenantController {
 
   @Post('invite')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Convidar usuário para o tenant' })
+  @ApiOperation({ summary: 'Convidar usuário para o tenant (requer permissão tenant:manage)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('tenant:manage')
   async invite(
     @CurrentUser() user: any,
     @Body() dto: InviteTenantDto,

@@ -25,6 +25,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       providerId: profile.id,
       email: profile.emails[0].value,
       name: profile.displayName,
+      emailVerified: profile.emails[0]?.verified ?? false,
     };
     done(null, user);
   }

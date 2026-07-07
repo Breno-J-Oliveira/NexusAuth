@@ -3,6 +3,8 @@ import {
   BadRequestException,
   UnauthorizedException,
   NotFoundException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
@@ -16,6 +18,7 @@ import { Disable2faDto } from './dto/disable-2fa.dto';
 import { Challenge2faDto } from './dto/challenge-2fa.dto';
 import { AuditService } from '../audit/audit.service';
 import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class TwoFactorService {
@@ -25,9 +28,11 @@ export class TwoFactorService {
     private jwtService: JwtService,
     private auditService: AuditService,
     private webhooksDispatcher: WebhooksDispatcher,
+    private metricsService: MetricsService,
   ) {}
 
   async setup(userId: string) {
+    await this.checkRateLimit(`2fa:setup:${userId}`, 5, 60);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -56,6 +61,7 @@ export class TwoFactorService {
   }
 
   async verify(userId: string, dto: Verify2faDto) {
+    await this.checkRateLimit(`2fa:verify:${userId}`, 5, 60);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -110,6 +116,7 @@ export class TwoFactorService {
     await this.redisService.del(`2fa:pending:${userId}`);
 
     await this.auditService.log('TWO_FACTOR_ENABLED', { userId });
+    this.metricsService.auth2faEnabledTotal.inc();
 
     await this.webhooksDispatcher.dispatch('user.2fa_enabled', {
       userId,
@@ -122,6 +129,7 @@ export class TwoFactorService {
   }
 
   async disable(userId: string, dto: Disable2faDto) {
+    await this.checkRateLimit(`2fa:disable:${userId}`, 5, 60);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -187,6 +195,9 @@ export class TwoFactorService {
   }
 
   async challenge(dto: Challenge2faDto) {
+    const challengeKey = crypto.createHash('sha256').update(dto.challengeToken).digest('hex').slice(0, 16);
+    await this.checkRateLimit(`2fa:challenge:${challengeKey}`, 5, 60);
+
     let payload;
     try {
       payload = this.jwtService.verifyChallenge(dto.challengeToken);
@@ -252,6 +263,8 @@ export class TwoFactorService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId ?? undefined,
+      permissions: user.permissions ?? undefined,
     });
 
     const response: any = { accessToken, refreshToken };
@@ -261,6 +274,24 @@ export class TwoFactorService {
     }
 
     return response;
+  }
+
+  private async checkRateLimit(key: string, max: number, ttlSeconds: number): Promise<void> {
+    const count = await this.redisService.incr(key);
+    if (count === 1) {
+      await this.redisService.expire(key, ttlSeconds);
+    }
+    if (count > max) {
+      const retryAfter = await this.redisService.ttl(key);
+      throw new HttpException(
+        {
+          code: 'RATE_LIMITED',
+          message: 'Too many 2FA attempts. Please try again later.',
+          retryAfter,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   private generateBackupCodes(): string[] {
