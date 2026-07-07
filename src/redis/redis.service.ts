@@ -50,4 +50,8 @@ export class RedisService implements OnModuleDestroy {
   async ttl(key: string): Promise<number> {
     return this.client.ttl(key);
   }
+
+  async flushall(): Promise<void> {
+    await this.client.flushall();
+  }
 }

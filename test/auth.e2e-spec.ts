@@ -1,0 +1,149 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { RedisService } from '../src/redis/redis.service';
+
+jest.setTimeout(30000);
+
+describe('Auth E2E', () => {
+  let app: INestApplication;
+  const testEmail = `e2e-auth-${Date.now()}@test.com`;
+  const testPassword = 'Str0ng!Pass1';
+  let accessToken: string;
+  let refreshToken: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const redis = app.get(RedisService);
+    await redis.flushall();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  describe('POST /auth/register', () => {
+    it('should register a new user', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: testEmail, password: testPassword, name: 'E2E Test User' })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('id');
+      expect(res.body.email).toBe(testEmail);
+    });
+
+    it('should reject duplicate email', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: testEmail, password: testPassword, name: 'Duplicate' })
+        .expect(409);
+    });
+
+    it('should reject weak password', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: `weak-${Date.now()}@test.com`, password: '123', name: 'Weak' })
+        .expect(400);
+    });
+  });
+
+  describe('POST /auth/login', () => {
+    it('should login with valid credentials', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('User-Agent', 'Jest/1.0')
+        .send({ email: testEmail, password: testPassword })
+        .expect(200);
+
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      accessToken = res.body.accessToken;
+      refreshToken = res.body.refreshToken;
+    });
+
+    it('should reject invalid password', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: testEmail, password: 'WrongPassword123!' })
+        .expect(401);
+    });
+
+    it('should reject non-existent user', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: 'nonexistent@test.com', password: testPassword })
+        .expect(401);
+    });
+  });
+
+  describe('POST /auth/refresh', () => {
+    it('should refresh tokens', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      accessToken = res.body.accessToken;
+      refreshToken = res.body.refreshToken;
+    });
+
+    it('should reject invalid refresh token', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: 'invalid-token' })
+        .expect(400);
+    });
+  });
+
+  describe('GET /auth/me', () => {
+    it('should return user profile with valid token', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('id');
+      expect(res.body.email).toBe(testEmail);
+    });
+
+    it('should reject without token', async () => {
+      await request(app.getHttpServer())
+        .get('/auth/me')
+        .expect(401);
+    });
+
+    it('should reject with invalid token', async () => {
+      await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', 'Bearer invalid.jwt.token')
+        .expect(401);
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('should logout successfully', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ refreshToken })
+        .expect(201);
+    });
+
+    it('should reject refresh token after logout', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+  });
+});

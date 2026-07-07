@@ -6,6 +6,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
@@ -15,12 +16,15 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
+@ApiTags('Tenant')
 @Controller('tenant')
 @UseGuards(JwtAuthGuard)
 export class TenantController {
   constructor(private tenantService: TenantService) {}
 
   @Post()
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Criar novo tenant' })
   async create(
     @CurrentUser() user: any,
     @Body() dto: CreateTenantDto,
@@ -29,6 +33,8 @@ export class TenantController {
   }
 
   @Post('invite')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Convidar usuário para o tenant' })
   async invite(
     @CurrentUser() user: any,
     @Body() dto: InviteTenantDto,
@@ -37,6 +43,8 @@ export class TenantController {
   }
 
   @Post('invite/accept')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Aceitar convite para tenant' })
   async acceptInvitation(
     @CurrentUser() user: any,
     @Body() dto: AcceptInvitationDto,
@@ -45,6 +53,8 @@ export class TenantController {
   }
 
   @Get('members')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Listar membros do tenant (requer permissão users:read)' })
   @UseGuards(PermissionGuard)
   @RequirePermission('users:read')
   async listMembers(@CurrentUser() user: any) {

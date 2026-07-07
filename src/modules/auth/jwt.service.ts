@@ -44,6 +44,7 @@ export class JwtService {
         algorithm: 'RS256',
         expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
+        keyid: 'nexusauth-1',
       },
     );
   }
@@ -64,6 +65,7 @@ export class JwtService {
         algorithm: 'RS256',
         expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
+        keyid: 'nexusauth-1',
       },
     );
   }
@@ -81,6 +83,7 @@ export class JwtService {
         algorithm: 'RS256',
         expiresIn: '5m',
         issuer: this.issuer,
+        keyid: 'nexusauth-1',
       },
     );
   }

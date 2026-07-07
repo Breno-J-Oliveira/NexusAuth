@@ -323,7 +323,7 @@ export class AuthService {
     return { accessToken, refreshToken: newRefreshToken };
   }
 
-  async logout(user: any, token: string) {
+  async logout(user: any, token: string, refreshToken?: string) {
     const payload = this.jwtService.verify(token);
     const jti = payload.jti;
     const exp = payload.exp;
@@ -332,6 +332,13 @@ export class AuthService {
 
     if (ttl > 0) {
       await this.redisService.set(`blacklist:${jti}`, '1', ttl);
+    }
+
+    if (refreshToken) {
+      await this.prisma.refreshToken.updateMany({
+        where: { token: refreshToken, userId: user.sub },
+        data: { revoked: true },
+      });
     }
 
     await this.prisma.session.updateMany({

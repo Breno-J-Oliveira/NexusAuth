@@ -7,5 +7,4 @@ dist
 keys
 *.md
 .vscode
-test
 coverage
