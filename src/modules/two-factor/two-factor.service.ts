@@ -15,6 +15,7 @@ import { Verify2faDto } from './dto/verify-2fa.dto';
 import { Disable2faDto } from './dto/disable-2fa.dto';
 import { Challenge2faDto } from './dto/challenge-2fa.dto';
 import { AuditService } from '../audit/audit.service';
+import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 
 @Injectable()
 export class TwoFactorService {
@@ -23,6 +24,7 @@ export class TwoFactorService {
     private redisService: RedisService,
     private jwtService: JwtService,
     private auditService: AuditService,
+    private webhooksDispatcher: WebhooksDispatcher,
   ) {}
 
   async setup(userId: string) {
@@ -109,6 +111,10 @@ export class TwoFactorService {
 
     await this.auditService.log('TWO_FACTOR_ENABLED', { userId });
 
+    await this.webhooksDispatcher.dispatch('user.2fa_enabled', {
+      userId,
+    });
+
     return {
       message: '2FA enabled successfully',
       backupCodes,
@@ -172,6 +178,10 @@ export class TwoFactorService {
     });
 
     await this.auditService.log('TWO_FACTOR_DISABLED', { userId });
+
+    await this.webhooksDispatcher.dispatch('user.2fa_disabled', {
+      userId,
+    });
 
     return { message: '2FA disabled successfully' };
   }

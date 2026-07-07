@@ -13,6 +13,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { AdminModule } from './modules/admin/admin.module';
     SessionsModule,
     TenantModule,
     AdminModule,
+    WebhooksModule,
+    ApiKeysModule,
   ],
 })
 export class AppModule {}

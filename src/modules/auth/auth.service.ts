@@ -20,6 +20,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { AuditService } from '../audit/audit.service';
+import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +29,7 @@ export class AuthService {
     private redisService: RedisService,
     private jwtService: JwtService,
     private auditService: AuditService,
+    private webhooksDispatcher: WebhooksDispatcher,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -66,6 +68,12 @@ export class AuthService {
     );
 
     await this.auditService.log('REGISTER', { userId: user.id });
+
+    await this.webhooksDispatcher.dispatch('user.registered', {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+    }, user.tenantId);
 
     return {
       id: user.id,
@@ -213,6 +221,12 @@ export class AuthService {
       metadata: { sessionId: session.id },
     });
 
+    await this.webhooksDispatcher.dispatch('user.login', {
+      userId: user.id,
+      email: user.email,
+      sessionId: session.id,
+    }, user.tenantId);
+
     return { accessToken, refreshToken, sessionId: session.id };
   }
 
@@ -327,6 +341,10 @@ export class AuthService {
 
     await this.auditService.log('LOGOUT', { userId: user.sub });
 
+    await this.webhooksDispatcher.dispatch('user.logout', {
+      userId: user.sub,
+    });
+
     return { message: 'Logged out successfully' };
   }
 
@@ -378,6 +396,10 @@ export class AuthService {
     });
 
     await this.auditService.log('PASSWORD_CHANGED', { userId });
+
+    await this.webhooksDispatcher.dispatch('user.password_changed', {
+      userId,
+    });
 
     return { message: 'Password changed successfully' };
   }
@@ -581,6 +603,12 @@ export class AuthService {
       userId: user.id,
       metadata: { method: 'magic_link' },
     });
+
+    await this.webhooksDispatcher.dispatch('user.login', {
+      userId: user.id,
+      email: user.email,
+      method: 'magic_link',
+    }, user.tenantId);
 
     return { accessToken, refreshToken };
   }

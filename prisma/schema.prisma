@@ -83,6 +83,7 @@ model User {
   sessions           Session[]
   auditLogs          AuditLog[]
   apiKeys            ApiKey[]
+  webhooks           Webhook[]
   passwordResets     PasswordReset[]
   emailVerifications EmailVerification[]
   magicLinks         MagicLink[]
@@ -198,15 +199,36 @@ model ApiKey {
 
 model Webhook {
   id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
   tenantId  String?
   tenant    Tenant?  @relation(fields: [tenantId], references: [id])
   url       String   // endpoint do app que recebe o webhook
   events    String[] // ["user.login", "user.registered", ...]
   secret    String   // segredo para assinar o payload (HMAC)
   active    Boolean  @default(true)
+  deliveries WebhookDelivery[]
   createdAt DateTime @default(now())
 
   @@index([tenantId])
+  @@index([userId])
+}
+
+model WebhookDelivery {
+  id          String   @id @default(uuid())
+  webhookId   String
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event       String   // nome do evento disparado
+  payload     Json     // payload enviado
+  statusCode  Int?     // HTTP status code da resposta (null se não respondeu)
+  attempt     Int      // número da tentativa (1, 2, 3)
+  success     Boolean  @default(false)
+  errorMessage String? // erro se falhou
+  createdAt   DateTime @default(now())
+
+  @@index([webhookId])
+  @@index([event])
+  @@index([createdAt])
 }
 
 model PasswordReset {

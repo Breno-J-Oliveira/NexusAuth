@@ -8,6 +8,7 @@ import {
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto';
@@ -17,6 +18,7 @@ export class TenantService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private webhooksDispatcher: WebhooksDispatcher,
   ) {}
 
   async createTenant(userId: string, dto: CreateTenantDto) {
@@ -105,6 +107,13 @@ export class TenantService {
       userId,
       metadata: { tenantId: admin.tenantId, invitedEmail: dto.email, role: dto.role ?? 'USER' },
     });
+
+    await this.webhooksDispatcher.dispatch('tenant.user_invited', {
+      tenantId: admin.tenantId,
+      invitedEmail: dto.email,
+      role: dto.role ?? 'USER',
+      invitedBy: userId,
+    }, admin.tenantId);
 
     return { message: 'Invitation sent successfully' };
   }
