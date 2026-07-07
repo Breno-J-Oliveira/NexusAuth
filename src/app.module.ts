@@ -9,6 +9,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { JwksModule } from './modules/jwks/jwks.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { OAuthModule } from './modules/oauth/oauth.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { OAuthModule } from './modules/oauth/oauth.module';
     JwksModule,
     TwoFactorModule,
     OAuthModule,
+    AuditModule,
+    SessionsModule,
   ],
 })
 export class AppModule {}

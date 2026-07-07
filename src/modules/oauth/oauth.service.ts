@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '../auth/jwt.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface OAuthProfile {
   provider: 'google' | 'github';
@@ -15,6 +16,7 @@ export class OAuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private auditService: AuditService,
   ) {}
 
   async handleOAuthLogin(profile: OAuthProfile) {
@@ -57,10 +59,10 @@ export class OAuthService {
       return { requiresTwoFactor: true, challengeToken };
     }
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, profile.provider);
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
+  private async generateTokens(userId: string, email: string, role: string, provider: string) {
     const session = await this.prisma.session.create({
       data: {
         userId,
@@ -85,6 +87,11 @@ export class OAuthService {
       sub: userId,
       email,
       role,
+    });
+
+    await this.auditService.log('LOGIN', {
+      userId,
+      metadata: { method: `oauth_${provider}` },
     });
 
     return { accessToken, refreshToken };

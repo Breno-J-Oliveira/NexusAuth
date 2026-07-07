@@ -5,9 +5,10 @@ import { OAuthService } from './oauth.service';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { GithubStrategy } from './strategies/github.strategy';
 import { JwtService } from '../auth/jwt.service';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [PassportModule],
+  imports: [PassportModule, AuditModule],
   controllers: [OAuthController],
   providers: [OAuthService, GoogleStrategy, GithubStrategy, JwtService],
   exports: [OAuthService],

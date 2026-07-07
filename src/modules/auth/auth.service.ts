@@ -19,6 +19,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
@@ -26,6 +27,7 @@ export class AuthService {
     private prisma: PrismaService,
     private redisService: RedisService,
     private jwtService: JwtService,
+    private auditService: AuditService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -62,6 +64,8 @@ export class AuthService {
     console.log(
       `[Email Verification] Link: http://localhost:3000/auth/verify-email?token=${token}`,
     );
+
+    await this.auditService.log('REGISTER', { userId: user.id });
 
     return {
       id: user.id,
@@ -119,6 +123,12 @@ export class AuthService {
     });
     if (!user) {
       await this.recordFailedLogin(dto.email);
+      await this.auditService.log('LOGIN_FAILED', {
+        metadata: { email: dto.email, reason: 'user_not_found' },
+        ipAddress,
+        userAgent,
+        success: false,
+      });
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid credentials',
@@ -135,6 +145,13 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
       await this.recordFailedLogin(dto.email);
+      await this.auditService.log('LOGIN_FAILED', {
+        userId: user.id,
+        ipAddress,
+        userAgent,
+        metadata: { reason: 'wrong_password' },
+        success: false,
+      });
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid credentials',
@@ -149,14 +166,23 @@ export class AuthService {
         email: user.email,
         role: user.role,
       });
+      await this.auditService.log('TWO_FACTOR_CHALLENGE', {
+        userId: user.id,
+        ipAddress,
+        userAgent,
+      });
       return { requiresTwoFactor: true, challengeToken };
     }
 
+    await this.detectNewDevice(user.id, userAgent, ipAddress);
+
+    const location = this.auditService.getLocation(ipAddress);
     const session = await this.prisma.session.create({
       data: {
         userId: user.id,
         device,
         ipAddress,
+        location,
         userAgent,
       },
     });
@@ -178,7 +204,36 @@ export class AuthService {
       role: user.role,
     });
 
-    return { accessToken, refreshToken };
+    await this.auditService.log('LOGIN', {
+      userId: user.id,
+      ipAddress,
+      userAgent,
+      metadata: { sessionId: session.id },
+    });
+
+    return { accessToken, refreshToken, sessionId: session.id };
+  }
+
+  private async detectNewDevice(
+    userId: string,
+    userAgent: string,
+    ipAddress: string,
+  ): Promise<void> {
+    const fingerprint = crypto
+      .createHash('sha256')
+      .update(userAgent + ipAddress)
+      .digest('hex');
+
+    const existingSession = await this.prisma.session.findFirst({
+      where: { userId, userAgent, ipAddress, active: true },
+    });
+
+    if (!existingSession) {
+      const location = this.auditService.getLocation(ipAddress);
+      console.log(
+        `[New Device] User ${userId} logged in from a new device. IP: ${ipAddress}, Location: ${location}, User-Agent: ${userAgent}, Time: ${new Date().toISOString()}`,
+      );
+    }
   }
 
   private async recordFailedLogin(email: string): Promise<void> {
@@ -266,6 +321,8 @@ export class AuthService {
       data: { active: false },
     });
 
+    await this.auditService.log('LOGOUT', { userId: user.sub });
+
     return { message: 'Logged out successfully' };
   }
 
@@ -316,6 +373,8 @@ export class AuthService {
       },
     });
 
+    await this.auditService.log('PASSWORD_CHANGED', { userId });
+
     return { message: 'Password changed successfully' };
   }
 
@@ -337,6 +396,8 @@ export class AuthService {
       console.log(
         `[Password Reset] Link: http://localhost:3000/auth/reset-password?token=${token}`,
       );
+
+      await this.auditService.log('PASSWORD_RESET_REQUESTED', { userId: user.id });
     }
 
     return { message: 'If the email exists, a reset link has been sent' };
@@ -404,6 +465,8 @@ export class AuthService {
         data: { used: true },
       }),
     ]);
+
+    await this.auditService.log('PASSWORD_RESET_COMPLETED', { userId: user.id });
 
     return { message: 'Password reset successfully' };
   }
@@ -506,6 +569,11 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+    });
+
+    await this.auditService.log('LOGIN', {
+      userId: user.id,
+      metadata: { method: 'magic_link' },
     });
 
     return { accessToken, refreshToken };

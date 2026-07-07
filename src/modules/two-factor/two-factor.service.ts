@@ -14,6 +14,7 @@ import { JwtService } from '../auth/jwt.service';
 import { Verify2faDto } from './dto/verify-2fa.dto';
 import { Disable2faDto } from './dto/disable-2fa.dto';
 import { Challenge2faDto } from './dto/challenge-2fa.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class TwoFactorService {
@@ -21,6 +22,7 @@ export class TwoFactorService {
     private prisma: PrismaService,
     private redisService: RedisService,
     private jwtService: JwtService,
+    private auditService: AuditService,
   ) {}
 
   async setup(userId: string) {
@@ -105,6 +107,8 @@ export class TwoFactorService {
 
     await this.redisService.del(`2fa:pending:${userId}`);
 
+    await this.auditService.log('TWO_FACTOR_ENABLED', { userId });
+
     return {
       message: '2FA enabled successfully',
       backupCodes,
@@ -166,6 +170,8 @@ export class TwoFactorService {
         backupCodes: [],
       },
     });
+
+    await this.auditService.log('TWO_FACTOR_DISABLED', { userId });
 
     return { message: '2FA disabled successfully' };
   }

@@ -28,6 +28,8 @@ const envSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   GITHUB_CALLBACK_URL: z.string().optional(),
+
+  AUDIT_LOG_RETENTION_DAYS: z.coerce.number().default(90),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

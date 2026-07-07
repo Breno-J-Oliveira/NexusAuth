@@ -35,4 +35,9 @@ export const configuration = () => ({
       CALLBACK_URL: process.env.GITHUB_CALLBACK_URL,
     },
   },
+
+  AUDIT_LOG_RETENTION_DAYS: parseInt(
+    process.env.AUDIT_LOG_RETENTION_DAYS ?? '90',
+    10,
+  ),
 });
