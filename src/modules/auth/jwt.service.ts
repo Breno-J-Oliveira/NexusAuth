@@ -33,10 +33,32 @@ export class JwtService {
     sub: string;
     email: string;
     role: string;
+    tenantId?: string;
+    permissions?: string[];
   }): string {
     const jti = crypto.randomUUID();
     return jwt.sign(
       { ...payload, jti, type: 'access' },
+      this.privateKey,
+      {
+        algorithm: 'RS256',
+        expiresIn: this.accessExpiresIn as any,
+        issuer: this.issuer,
+      },
+    );
+  }
+
+  signImpersonationToken(payload: {
+    sub: string;
+    email: string;
+    role: string;
+    tenantId?: string;
+    permissions?: string[];
+    impersonatedBy: string;
+  }): string {
+    const jti = crypto.randomUUID();
+    return jwt.sign(
+      { ...payload, jti, type: 'impersonation' },
       this.privateKey,
       {
         algorithm: 'RS256',
@@ -69,6 +91,9 @@ export class JwtService {
     role: string;
     jti: string;
     type: string;
+    tenantId?: string;
+    permissions?: string[];
+    impersonatedBy?: string;
     exp: number;
     iat: number;
     iss: string;

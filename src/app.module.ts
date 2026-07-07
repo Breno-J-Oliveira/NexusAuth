@@ -11,6 +11,8 @@ import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { OAuthModule } from './modules/oauth/oauth.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { TenantModule } from './modules/tenant/tenant.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { SessionsModule } from './modules/sessions/sessions.module';
     OAuthModule,
     AuditModule,
     SessionsModule,
+    TenantModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

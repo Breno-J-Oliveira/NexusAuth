@@ -39,7 +39,7 @@ export class JwtAuthGuard implements CanActivate {
     try {
       const payload = await this.jwtService.verify(token);
 
-      if (payload.type !== 'access') {
+      if (payload.type !== 'access' && payload.type !== 'impersonation') {
         throw new UnauthorizedException({
           code: 'TOKEN_INVALID',
           message: 'Invalid token type for this endpoint',

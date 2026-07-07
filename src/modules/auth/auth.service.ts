@@ -202,6 +202,8 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId ?? undefined,
+      permissions: user.permissions ?? undefined,
     });
 
     await this.auditService.log('LOGIN', {
@@ -300,6 +302,8 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId ?? undefined,
+      permissions: user.permissions ?? undefined,
     });
 
     return { accessToken, refreshToken: newRefreshToken };
@@ -569,6 +573,8 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId ?? undefined,
+      permissions: user.permissions ?? undefined,
     });
 
     await this.auditService.log('LOGIN', {
