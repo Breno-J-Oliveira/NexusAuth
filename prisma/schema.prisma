@@ -47,6 +47,7 @@ enum AuditAction {
   API_KEY_REVOKED
   TENANT_USER_INVITED
   TENANT_USER_REMOVED
+  REFRESH_TOKEN_REUSE_DETECTED
 }
 
 // ============================================================

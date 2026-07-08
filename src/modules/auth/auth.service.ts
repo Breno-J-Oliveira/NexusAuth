@@ -38,7 +38,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     // CRITICAL FIX: Prevent race condition in registration using Redis lock
     const lockKey = `register:lock:${dto.email.toLowerCase()}`;
-    const lockAcquired = await this.redisService.set(lockKey, '1', 10); // 10 second lock
+    const lockAcquired = await this.redisService.setNX(lockKey, '1', 10); // 10 second lock
     
     if (!lockAcquired) {
       // Another registration is in progress for this email
