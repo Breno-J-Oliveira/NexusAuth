@@ -11,6 +11,8 @@ export class GithubStrategy extends PassportStrategy(Strategy, 'github') {
       clientSecret: configService.get<string>('GITHUB_CLIENT_SECRET') || 'placeholder',
       callbackURL: configService.get<string>('GITHUB_CALLBACK_URL') || 'http://localhost:3000/auth/github/callback',
       scope: ['user:email'],
+      state: true, // M1 fix: enable CSRF protection via state parameter
+      passReqToCallback: true, // Required for custom state management
     });
   }
 

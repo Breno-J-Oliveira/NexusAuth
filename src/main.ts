@@ -19,6 +19,12 @@ async function bootstrap() {
 
   // CORS configurável via env — fail-closed em produção
   const configService = app.get(ConfigService);
+
+  // M2 fix: Configure trust proxy for rate limiting behind reverse proxy
+  // Set to the number of trusted proxy hops (typically 1 for nginx/ALB/Cloudflare)
+  // This must be configured based on actual deployment topology
+  const proxyHops = configService.get<number>('TRUST_PROXY_HOPS', 1);
+  app.set('trust proxy', proxyHops);
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const corsOrigins = configService
     .get<string>('CORS_ORIGINS', '')

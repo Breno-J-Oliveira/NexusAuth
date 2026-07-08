@@ -47,13 +47,16 @@ function ipToHex(ip: string): string {
 }
 
 function isBlockedIp(ip: string): boolean {
+  // M4 fix: normalize IPv6 addresses by removing brackets (Node URL returns [::1] format)
+  const normalizedIp = ip.replace(/^\[|\]$/g, '');
+
   // V8 fix: normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) to IPv4
-  const mappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const mappedMatch = normalizedIp.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
   if (mappedMatch) {
     return isBlockedIp(mappedMatch[1]);
   }
-  if (ip === 'localhost' || ip === '::1') return true;
-  return BLOCKED_RANGES.some((cidr) => ipInCidr(ip, cidr));
+  if (normalizedIp === 'localhost' || normalizedIp === '::1') return true;
+  return BLOCKED_RANGES.some((cidr) => ipInCidr(normalizedIp, cidr));
 }
 
 export async function validateWebhookUrl(urlStr: string): Promise<string> {

@@ -61,14 +61,37 @@ export class WebhooksController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() dto: UpdateWebhookDto,
+    @Req() req: Request,
   ) {
+    // V3 fix: rate limit webhook update
+    const ipAddress = req.ip || 'unknown';
+    const key = `ratelimit:webhook:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) await this.redisService.expire(key, 60);
+    if (count > 20) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.webhooksService.update(user.sub, id, dto);
   }
 
   @Delete(':id')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Remover webhook' })
-  async remove(@CurrentUser() user: any, @Param('id') id: string) {
+  async remove(@CurrentUser() user: any, @Param('id') id: string, @Req() req: Request) {
+    // V3 fix: rate limit webhook delete
+    const ipAddress = req.ip || 'unknown';
+    const key = `ratelimit:webhook:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) await this.redisService.expire(key, 60);
+    if (count > 20) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.webhooksService.remove(user.sub, id);
   }
 

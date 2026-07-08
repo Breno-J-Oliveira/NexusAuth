@@ -54,11 +54,13 @@ export class AdminService {
       });
     }
 
-    // V1 fix: prevent cross-tenant impersonation
-    if (admin.tenantId && target.tenantId && admin.tenantId !== target.tenantId) {
+    // B3 fix: prevent cross-tenant impersonation including null checks
+    // Treat null tenantId as a distinct scope, not as "skip check"
+    // Only allow impersonation if tenantIds match exactly (both null or both same value)
+    if (admin.tenantId !== target.tenantId) {
       throw new ForbiddenException({
         code: 'CROSS_TENANT_IMPERSONATION_BLOCKED',
-        message: 'Cannot impersonate users from other tenants',
+        message: 'Cannot impersonate users from different tenant scopes',
       });
     }
 

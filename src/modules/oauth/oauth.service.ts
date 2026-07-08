@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '../auth/jwt.service';
 import { AuditService } from '../audit/audit.service';
+import { hashToken } from '../../common/utils/crypto.util';
 
 export interface OAuthProfile {
   provider: 'google' | 'github';
@@ -87,11 +88,12 @@ export class OAuthService {
       },
     });
 
-    const refreshToken = crypto.randomUUID();
+    const rawRefreshToken = crypto.randomUUID();
+    const hashedRefreshToken = hashToken(rawRefreshToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await this.prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: hashedRefreshToken,
         userId,
         sessionId: session.id,
         expiresAt,
@@ -112,6 +114,6 @@ export class OAuthService {
       metadata: { method: `oauth_${provider}` },
     });
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken: rawRefreshToken };
   }
 }

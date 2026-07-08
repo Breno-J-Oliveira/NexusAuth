@@ -12,6 +12,7 @@ import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto';
+import { hashToken } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class TenantService {
@@ -22,6 +23,17 @@ export class TenantService {
   ) {}
 
   async createTenant(userId: string, dto: CreateTenantDto) {
+    // V6 fix: explicit slug collision check for user-friendly error message
+    const existing = await this.prisma.tenant.findUnique({
+      where: { slug: dto.slug },
+    });
+    if (existing) {
+      throw new ConflictException({
+        code: 'SLUG_ALREADY_TAKEN',
+        message: 'This slug is already taken. Please choose another.',
+      });
+    }
+
     // M3 fix: use upsert pattern to avoid race condition on slug
     try {
       const tenant = await this.prisma.tenant.create({
@@ -89,13 +101,14 @@ export class TenantService {
       });
     }
 
-    const token = crypto.randomUUID();
+    const rawToken = crypto.randomUUID();
+    const hashedToken = hashToken(rawToken);
     await this.prisma.tenantInvitation.create({
       data: {
         tenantId: admin.tenantId,
         email: dto.email,
         role: (dto.role as any) ?? 'USER',
-        token,
+        token: hashedToken,
         invitedBy: userId,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
@@ -104,7 +117,7 @@ export class TenantService {
     // M2 fix: only log invite links in non-production
     if (process.env.NODE_ENV !== 'production') {
       console.log(
-        `[Tenant Invite] Link: http://localhost:3000/tenant/invite/accept?token=${token}`,
+        `[Tenant Invite] Link: http://localhost:3000/tenant/invite/accept?token=${rawToken}`,
       );
     }
 
@@ -124,10 +137,11 @@ export class TenantService {
   }
 
   async acceptInvitation(userId: string, dto: AcceptInvitationDto) {
+    const hashedToken = hashToken(dto.token);
     // V6 fix: atomic update — only set accepted=true if not already accepted and not expired
     const result = await this.prisma.tenantInvitation.updateMany({
       where: {
-        token: dto.token,
+        token: hashedToken,
         accepted: false,
         expiresAt: { gt: new Date() },
       },
@@ -136,7 +150,7 @@ export class TenantService {
 
     if (result.count === 0) {
       const invitation = await this.prisma.tenantInvitation.findUnique({
-        where: { token: dto.token },
+        where: { token: hashedToken },
       });
       if (!invitation) {
         throw new NotFoundException({
@@ -157,7 +171,7 @@ export class TenantService {
     }
 
     const invitation = await this.prisma.tenantInvitation.findUnique({
-      where: { token: dto.token },
+      where: { token: hashedToken },
     });
 
     const user = await this.prisma.user.findUnique({

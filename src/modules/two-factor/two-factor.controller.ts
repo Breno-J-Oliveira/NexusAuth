@@ -4,8 +4,10 @@ import {
   HttpCode,
   Post,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Request } from 'express';
 import { TwoFactorService } from './two-factor.service';
 import { Verify2faDto, verify2faSchema } from './dto/verify-2fa.dto';
 import { Disable2faDto, disable2faSchema } from './dto/disable-2fa.dto';
@@ -54,7 +56,9 @@ export class TwoFactorController {
   @ApiOperation({ summary: 'Resolver challenge 2FA e obter tokens' })
   async challenge(
     @Body(new ZodValidationPipe(challenge2faSchema)) dto: Challenge2faDto,
+    @Req() req: Request,
   ) {
-    return this.twoFactorService.challenge(dto);
+    const ipAddress = req.ip || 'unknown';
+    return this.twoFactorService.challenge(dto, ipAddress);
   }
 }

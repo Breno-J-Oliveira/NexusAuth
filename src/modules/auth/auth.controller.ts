@@ -25,6 +25,13 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { z } from 'zod';
+
+// B2 fix: add DTO for verify-email and magic-link/verify
+const verifyTokenSchema = z.object({
+  token: z.string().uuid(),
+});
+const verifyTokenDto = z.infer<typeof verifyTokenSchema>;
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -61,7 +68,13 @@ export class AuthController {
   ) {
     const userAgent = req.headers['user-agent'] || 'Unknown';
     const ipAddress = req.ip || 'Unknown';
-    return this.authService.login(dto, userAgent, ipAddress, userAgent);
+    // B4 fix: pass device name instead of userAgent twice
+    // Extract device name from userAgent (simplified)
+    const device = userAgent.includes('Chrome') ? 'Chrome' : 
+                  userAgent.includes('Firefox') ? 'Firefox' :
+                  userAgent.includes('Safari') ? 'Safari' :
+                  userAgent.includes('Edge') ? 'Edge' : 'Unknown Device';
+    return this.authService.login(dto, device, ipAddress, userAgent);
   }
 
   @Public()
@@ -115,16 +128,16 @@ export class AuthController {
   @Post('magic-link/verify')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verificar magic link token' })
-  async verifyMagicLink(@Body('token') token: string) {
-    return this.authService.verifyMagicLink(token);
+  async verifyMagicLink(@Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string }) {
+    return this.authService.verifyMagicLink(dto.token);
   }
 
   @Public()
   @Post('verify-email')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verificar email com token' })
-  async verifyEmail(@Body('token') token: string) {
-    return this.authService.verifyEmail(token);
+  async verifyEmail(@Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string }) {
+    return this.authService.verifyEmail(dto.token);
   }
 
   @Post('logout')

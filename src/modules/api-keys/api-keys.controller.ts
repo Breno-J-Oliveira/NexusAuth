@@ -17,6 +17,7 @@ import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { RedisService } from '../../redis/redis.service';
 
 @ApiTags('API Keys')
@@ -62,6 +63,7 @@ export class ApiKeysController {
     return this.apiKeysService.revoke(user.sub, id);
   }
 
+  @Public()
   @Get('test')
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')

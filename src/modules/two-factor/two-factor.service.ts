@@ -19,7 +19,7 @@ import { Challenge2faDto } from './dto/challenge-2fa.dto';
 import { AuditService } from '../audit/audit.service';
 import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 import { MetricsService } from '../metrics/metrics.service';
-import { encrypt, decrypt } from '../../common/utils/crypto.util';
+import { encrypt, decrypt, hashToken } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class TwoFactorService {
@@ -195,9 +195,13 @@ export class TwoFactorService {
     return { message: '2FA disabled successfully' };
   }
 
-  async challenge(dto: Challenge2faDto) {
+  async challenge(dto: Challenge2faDto, ipAddress?: string) {
     const challengeKey = crypto.createHash('sha256').update(dto.challengeToken).digest('hex').slice(0, 16);
     await this.checkRateLimit(`2fa:challenge:${challengeKey}`, 5, 60);
+    // V5 fix: add per-IP rate limiting
+    if (ipAddress) {
+      await this.checkRateLimit(`2fa:challenge:ip:${ipAddress}`, 20, 60);
+    }
 
     let payload;
     try {
@@ -249,11 +253,12 @@ export class TwoFactorService {
       },
     });
 
-    const refreshToken = crypto.randomUUID();
+    const rawRefreshToken = crypto.randomUUID();
+    const hashedRefreshToken = hashToken(rawRefreshToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await this.prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: hashedRefreshToken,
         userId: user.id,
         sessionId: session.id,
         expiresAt,
@@ -269,7 +274,7 @@ export class TwoFactorService {
       sessionId: session.id,
     });
 
-    const response: any = { accessToken, refreshToken };
+    const response: any = { accessToken, refreshToken: rawRefreshToken };
 
     if (user.backupCodes.length <= 2 && user.backupCodes.length > 0) {
       response.warning = `Only ${user.backupCodes.length} backup codes remaining. Please regenerate new ones.`;
