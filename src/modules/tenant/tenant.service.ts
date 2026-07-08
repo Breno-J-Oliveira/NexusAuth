@@ -191,11 +191,26 @@ export class TenantService {
       });
     }
 
+    // HIGH FIX: Require email verification to prevent hijacking via pre-registration
+    if (!user.emailVerified) {
+      throw new ForbiddenException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'You must verify your email before accepting an invitation',
+      });
+    }
+
+    // CRITICAL FIX: Reset permissions based on new role to prevent privilege escalation
+    const rolePermissions: Record<string, string[]> = {
+      ADMIN: ['tenant:manage', 'users:read', 'users:write', 'billing:manage'],
+      USER: [],
+    };
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         tenantId: invitation!.tenantId,
         role: invitation!.role,
+        permissions: rolePermissions[invitation!.role] || [],
       },
     });
 

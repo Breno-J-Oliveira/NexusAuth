@@ -232,6 +232,16 @@ export class TwoFactorService {
 
     const isBackupCode = await this.consumeBackupCode(user.id, user.backupCodes, dto.code);
     if (!isBackupCode) {
+      // MEDIUM FIX: Prevent TOTP replay by checking last used code
+      const lastCodeKey = `2fa:lastcode:${user.id}`;
+      const lastCode = await this.redisService.get(lastCodeKey);
+      if (lastCode === dto.code) {
+        throw new UnauthorizedException({
+          code: 'CODE_ALREADY_USED',
+          message: 'This code has already been used',
+        });
+      }
+
       const isValid = authenticator.verify({
         token: dto.code,
         secret: decrypt(user.twoFactorSecret!),
@@ -242,6 +252,16 @@ export class TwoFactorService {
           message: 'Invalid 2FA code',
         });
       }
+
+      // Store last used code with 60s TTL (TOTP window)
+      await this.redisService.set(lastCodeKey, dto.code, 60);
+    }
+
+    // MEDIUM FIX: Blacklist challenge token jti to prevent reuse
+    const challengePayload = this.jwtService.verifyChallenge(dto.challengeToken);
+    if (challengePayload.jti) {
+      const ttl = 300; // 5 minutes (same as challenge token expiry)
+      await this.redisService.set(`blacklist:${challengePayload.jti}`, '1', ttl);
     }
 
     const session = await this.prisma.session.create({

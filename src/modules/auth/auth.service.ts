@@ -371,6 +371,31 @@ export class AuthService {
       });
     }
 
+    // MEDIUM FIX: Token family revocation on reuse detection
+    if (stored.revoked) {
+      // Reuse of revoked token indicates possible compromise - revoke entire session
+      await this.prisma.$transaction([
+        this.prisma.session.update({
+          where: { id: stored.sessionId },
+          data: { active: false },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { sessionId: stored.sessionId },
+          data: { revoked: true },
+        }),
+      ]);
+      
+      await this.auditService.log('REFRESH_TOKEN_REUSE_DETECTED', {
+        userId: stored.userId,
+        metadata: { sessionId: stored.sessionId },
+      });
+      
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_REVOKED',
+        message: 'Refresh token has been revoked',
+      });
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: stored.userId },
     });
@@ -418,8 +443,9 @@ export class AuthService {
     }
 
     if (refreshToken) {
+      const hashedRefreshToken = hashToken(refreshToken);
       await this.prisma.refreshToken.updateMany({
-        where: { token: refreshToken, userId: user.sub },
+        where: { token: hashedRefreshToken, userId: user.sub },
         data: { revoked: true },
       });
     }

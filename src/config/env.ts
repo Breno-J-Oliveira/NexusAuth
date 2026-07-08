@@ -7,6 +7,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
 
+  // HIGH FIX: Trust proxy hops - set to 0 for direct exposure, 1 for nginx/ALB/Cloudflare
+  TRUST_PROXY_HOPS: z.coerce.number().default(0),
+
   JWT_PRIVATE_KEY_PATH: z.string().default('./keys/private.pem'),
   JWT_PUBLIC_KEY_PATH: z.string().default('./keys/public.pem'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),

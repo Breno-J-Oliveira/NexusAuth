@@ -1,4 +1,4 @@
-import { IsBoolean, IsArray, IsOptional, IsString, ArrayMinSize } from 'class-validator';
+import { IsBoolean, IsArray, IsOptional, IsString, IsUrl, ArrayMinSize } from 'class-validator';
 
 export class UpdateWebhookDto {
   @IsOptional()
@@ -12,6 +12,6 @@ export class UpdateWebhookDto {
   events?: string[];
 
   @IsOptional()
-  @IsString()
+  @IsUrl()
   url?: string;
 }

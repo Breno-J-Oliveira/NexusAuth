@@ -30,21 +30,24 @@ describe('Auth E2E', () => {
   });
 
   describe('POST /auth/register', () => {
-    it('should register a new user', async () => {
+    it('should register a new user (anti-enumeration: returns generic message)', async () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: testEmail, password: testPassword, name: 'E2E Test User' })
-        .expect(201);
+        .expect(200);
 
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.email).toBe(testEmail);
+      expect(res.body).toHaveProperty('message');
+      expect(res.body.message).toContain('verification link');
     });
 
-    it('should reject duplicate email', async () => {
-      await request(app.getHttpServer())
+    it('should return same message for duplicate email (anti-enumeration)', async () => {
+      const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: testEmail, password: testPassword, name: 'Duplicate' })
-        .expect(409);
+        .expect(200);
+
+      expect(res.body).toHaveProperty('message');
+      expect(res.body.message).toContain('verification link');
     });
 
     it('should reject weak password', async () => {
