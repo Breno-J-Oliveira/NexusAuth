@@ -19,6 +19,7 @@ import { Challenge2faDto } from './dto/challenge-2fa.dto';
 import { AuditService } from '../audit/audit.service';
 import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
 import { MetricsService } from '../metrics/metrics.service';
+import { encrypt, decrypt } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class TwoFactorService {
@@ -101,14 +102,14 @@ export class TwoFactorService {
 
     const backupCodes = this.generateBackupCodes();
     const hashedBackupCodes = await Promise.all(
-      backupCodes.map((code) => bcrypt.hash(code, 10)),
+      backupCodes.map((code) => bcrypt.hash(code, 12)),
     );
 
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorEnabled: true,
-        twoFactorSecret: pendingSecret,
+        twoFactorSecret: encrypt(pendingSecret),
         backupCodes: hashedBackupCodes,
       },
     });
@@ -166,7 +167,7 @@ export class TwoFactorService {
     if (!isBackupCode) {
       const isValid = authenticator.verify({
         token: dto.code,
-        secret: user.twoFactorSecret!,
+        secret: decrypt(user.twoFactorSecret!),
       });
       if (!isValid) {
         throw new UnauthorizedException({
@@ -229,7 +230,7 @@ export class TwoFactorService {
     if (!isBackupCode) {
       const isValid = authenticator.verify({
         token: dto.code,
-        secret: user.twoFactorSecret!,
+        secret: decrypt(user.twoFactorSecret!),
       });
       if (!isValid) {
         throw new UnauthorizedException({
@@ -265,6 +266,7 @@ export class TwoFactorService {
       role: user.role,
       tenantId: user.tenantId ?? undefined,
       permissions: user.permissions ?? undefined,
+      sessionId: session.id,
     });
 
     const response: any = { accessToken, refreshToken };
@@ -312,11 +314,20 @@ export class TwoFactorService {
     for (let i = 0; i < backupCodes.length; i++) {
       const matches = await bcrypt.compare(code, backupCodes[i]);
       if (matches) {
-        const remaining = backupCodes.filter((_, idx) => idx !== i);
-        await this.prisma.user.update({
-          where: { id: userId },
-          data: { backupCodes: remaining },
+        // C4 fix: atomic update — only remove the code if it's still present (prevents race condition)
+        const result = await this.prisma.user.updateMany({
+          where: {
+            id: userId,
+            backupCodes: { has: backupCodes[i] },
+          },
+          data: {
+            backupCodes: { set: backupCodes.filter((_, idx) => idx !== i) },
+          },
         });
+        if (result.count === 0) {
+          // Code was already consumed by a concurrent request
+          return false;
+        }
         return true;
       }
     }

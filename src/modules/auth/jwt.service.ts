@@ -35,6 +35,7 @@ export class JwtService {
     role: string;
     tenantId?: string;
     permissions?: string[];
+    sessionId?: string;
   }): string {
     const jti = crypto.randomUUID();
     return jwt.sign(
@@ -106,6 +107,8 @@ export class JwtService {
       issuer: this.issuer,
     }) as any;
   }
+
+  // B2 fix: expose sessionId from payload for logoutAll keepCurrent
 
   verifyChallenge(token: string): {
     sub: string;

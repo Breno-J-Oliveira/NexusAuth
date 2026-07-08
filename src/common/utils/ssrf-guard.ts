@@ -47,11 +47,16 @@ function ipToHex(ip: string): string {
 }
 
 function isBlockedIp(ip: string): boolean {
+  // V8 fix: normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) to IPv4
+  const mappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mappedMatch) {
+    return isBlockedIp(mappedMatch[1]);
+  }
   if (ip === 'localhost' || ip === '::1') return true;
   return BLOCKED_RANGES.some((cidr) => ipInCidr(ip, cidr));
 }
 
-export async function validateWebhookUrl(urlStr: string): Promise<void> {
+export async function validateWebhookUrl(urlStr: string): Promise<string> {
   let parsed: URL;
   try {
     parsed = new URL(urlStr);
@@ -78,6 +83,7 @@ export async function validateWebhookUrl(urlStr: string): Promise<void> {
     });
   }
 
+  let resolvedIp: string;
   try {
     const addresses = await dns.promises.lookup(hostname, { all: true });
     for (const addr of addresses) {
@@ -88,6 +94,8 @@ export async function validateWebhookUrl(urlStr: string): Promise<void> {
         });
       }
     }
+    // A5 fix: return the first resolved IP to pin it and prevent DNS rebinding
+    resolvedIp = addresses[0].address;
   } catch (err: any) {
     if (err instanceof BadRequestException) throw err;
     throw new BadRequestException({
@@ -95,4 +103,9 @@ export async function validateWebhookUrl(urlStr: string): Promise<void> {
       message: `Could not resolve webhook hostname: ${err.message}`,
     });
   }
+
+  // A5 fix: rewrite URL to use the resolved IP, preventing DNS rebinding TOCTOU
+  const port = parsed.port ? `:${parsed.port}` : '';
+  const pinnedUrl = `${parsed.protocol}//${resolvedIp}${port}${parsed.pathname}${parsed.search}`;
+  return pinnedUrl;
 }

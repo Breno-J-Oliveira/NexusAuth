@@ -40,4 +40,6 @@ export const configuration = () => ({
     process.env.AUDIT_LOG_RETENTION_DAYS ?? '90',
     10,
   ),
+
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 });

@@ -20,13 +20,17 @@ export class ApiKeysService {
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
+    // A2 fix: filter requested permissions against user's actual permissions
+    const userPermissions = user?.permissions ?? [];
+    const allowedPermissions = dto.permissions.filter((p) => userPermissions.includes(p));
+
     const apiKey = await this.prisma.apiKey.create({
       data: {
         name: dto.name,
         key: keyHash,
         userId,
         tenantId: user?.tenantId ?? null,
-        permissions: dto.permissions,
+        permissions: allowedPermissions,
         active: true,
       },
     });

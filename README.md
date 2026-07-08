@@ -1,26 +1,63 @@
 # 🔐 NexusAuth — Microsserviço de Autenticação Centralizada
 
-> **Categoria no portfólio:** Backend / Security
-> **Prioridade:** 🔴 Alta · **Status:** ⚪ Não iniciado
-> **Integra com:** Zenith · SaaS Multiempresa · Dashboard Financeiro · TCC SENAI (possível)
+<p align="center">
+  <img src="docs/logo/logo 16x9.png" alt="NexusAuth Banner" width="640">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-FINALIZADO-10B981?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Status Finalizado">
+  <img src="https://img.shields.io/badge/Versão-1.0-2563EB?style=for-the-badge" alt="Versão 1.0">
+  <img src="https://img.shields.io/badge/Projeto-Portfólio%20Pessoal-111827?style=for-the-badge" alt="Projeto Pessoal">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white" alt="NestJS">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis">
+  <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/JWT-RS256-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT RS256">
+</p>
 
 ---
 
-## 💡 Ideia Original (Breno)
+## 📑 Índice
 
-Microsserviço e API que serve como autenticação centralizada e reutilizável. A ideia é que todos os meus outros projetos (Zenith, SaaS, Dashboard Financeiro, TCC SENAI) usem este mesmo serviço de auth, injetando o `tenant_id` direto no JWT quando aplicável.
-
-Já tenho uma versão pensada como arquitetura de microsserviço rodando na porta 3000 + um app de teste na porta 4000.
+1. [Sobre o Projeto](#-sobre-o-projeto)
+2. [Funcionalidades Principais](#-funcionalidades-principais)
+3. [Tecnologias e Bibliotecas](#-tecnologias-e-bibliotecas)
+4. [Arquitetura](#-arquitetura)
+5. [Modelo de Dados (Prisma)](#-modelo-de-dados-prisma)
+6. [Endpoints da API](#-endpoints-da-api)
+7. [Fluxos de Autenticação](#-fluxos-de-autenticação)
+8. [Integrações com Apps](#-integrações-com-apps)
+9. [Segurança](#-segurança)
+10. [Observabilidade](#-observabilidade)
+11. [Como Rodar Localmente](#-como-rodar-localmente)
+12. [Deploy em Produção](#-deploy-em-produção)
+13. [Testes Automatizados](#-testes-automatizados)
+14. [Fases de Desenvolvimento](#-fases-de-desenvolvimento)
+15. [Próximas Atualizações](#-próximas-atualizações)
+16. [Autor](#-autor)
+17. [Contatos e Redes Sociais](#-contatos-e-redes-sociais)
 
 ---
 
-## 🎯 Escopo
+## 🎯 Sobre o Projeto
 
-Microsserviço de autenticação centralizada, construído como API REST independente. Projetado para ser plug-and-play: qualquer aplicação pode integrar via middleware ou SDK compartilhado. É o **ponto único de identidade** para todos os projetos — um usuário se cadastra uma vez e acessa todos os apps (SSO). Demonstra conhecimento profundo de segurança, arquitetura de microsserviços e boas práticas de API.
+O **NexusAuth** é um microsserviço de autenticação centralizada, construído como API REST independente com **NestJS** e **TypeScript**. Projetado para ser plug-and-play: qualquer aplicação pode integrar via middleware ou SDK compartilhado. É o **ponto único de identidade** para todos os projetos — um usuário se cadastra uma vez e acessa todos os apps (SSO).
 
-### Funcionalidades principais
+A proposta é servir como autenticação reutilizável para todos os meus outros projetos (Zenith, SaaS Multiempresa, Dashboard Financeiro, TCC SENAI), injetando o `tenant_id` direto no JWT quando aplicável.
 
-#### 🔑 Autenticação Core
+O projeto foi desenvolvido como **projeto de portfólio pessoal** (solo), demonstrando conhecimento profundo de segurança, arquitetura de microsserviços e boas práticas de API.
+
+---
+
+## �️ Funcionalidades Principais
+
+### 🔑 Autenticação Core
 - **Access Token (15min) + Refresh Token (7 dias):** tokens divididos para segurança máxima
 - **Token Rotation:** refresh token é invalidado e regenerado a cada uso
 - **Blacklist no Redis:** logout invalida o token imediatamente
@@ -434,7 +471,7 @@ enum AuditAction {
 
 ---
 
-## 🔗 Integrações
+## 🔗 Integrações com Apps
 
 ### Apps que usam NexusAuth
 
@@ -455,6 +492,8 @@ enum AuditAction {
 3. **Webhooks** — NexusAuth notifica apps quando eventos acontecem (HMAC assinado)
 4. **API Keys** — comunicação backend-to-backend sem JWT de usuário
 5. **App de teste (porta 4000)** — app simples de tarefas para validar o fluxo de auth end-to-end
+
+## 🔄 Fluxos de Autenticação
 
 ### Fluxo de login (com 2FA)
 ```
@@ -484,43 +523,44 @@ App: usuário logado
 
 ## 📦 Entregáveis do Projeto
 
-- [ ] Repositório Git com código fonte
-- [ ] Docker Compose para rodar local (API + Postgres + Redis + app teste)
-- [ ] SDK `@nexus/auth-sdk` publicado como package npm
-- [ ] Documentação Swagger interativa
-- [ ] README com instruções de setup e uso
-- [ ] Coleção Postman/Insomnia para testar endpoints
-- [ ] Testes automatizados (unit + integration)
-- [ ] CI/CD no GitHub Actions
-- [ ] Configuração de OAuth2 (Google + GitHub credentials)
+- [x] Repositório Git com código fonte
+- [x] Docker Compose para rodar local (API + Postgres + Redis + app teste)
+- [x] SDK `@nexus/auth-sdk` publicado como package npm
+- [x] Documentação Swagger interativa
+- [x] README com instruções de setup e uso
+- [x] Coleção Postman/Insomnia para testar endpoints
+- [x] Testes automatizados (unit + integration)
+- [x] CI/CD no GitHub Actions
+- [x] Configuração de OAuth2 (Google + GitHub credentials)
+- [x] Auditoria de segurança completa (JWT alg confusion, SSRF, rate limiting, OAuth email verification)
 
 ---
 
 ## 🗺️ Fases de Desenvolvimento
 
 ### Fase 1 — Fundação
-- [ ] Configurar projeto NestJS + TypeScript + Prisma
-- [ ] Docker Compose (Postgres + Redis + API + app teste)
-- [ ] Schema Prisma completo + migrations
-- [ ] Config de ambiente (.env, JWT keys RS256, Redis, SMTP, OAuth2)
-- [ ] Helmet + CORS configurável
+- [x] Configurar projeto NestJS + TypeScript + Prisma
+- [x] Docker Compose (Postgres + Redis + API + app teste)
+- [x] Schema Prisma completo + migrations
+- [x] Config de ambiente (.env, JWT keys RS256, Redis, SMTP, OAuth2)
+- [x] Helmet + CORS configurável
 
 ### Fase 2 — Auth Core
-- [ ] Registro com bcrypt + verificação de email
-- [ ] Login com access token (15min, RS256)
-- [ ] Refresh token com rotation (7 dias, Postgres)
-- [ ] Logout com blacklist no Redis
-- [ ] JWKS endpoint (/.well-known/jwks.json)
-- [ ] Guards: JWT, RBAC
+- [x] Registro com bcrypt + verificação de email
+- [x] Login com access token (15min, RS256)
+- [x] Refresh token com rotation (7 dias, Postgres)
+- [x] Logout com blacklist no Redis
+- [x] JWKS endpoint (/.well-known/jwks.json)
+- [x] Guards: JWT, RBAC
 
 ### Fase 3 — Segurança
-- [ ] Rate limiting no Redis (5 tentativas/min/IP)
-- [ ] Account lockout (5 tentativas falhas → bloqueia 15min)
-- [ ] Políticas de senha (complexidade + histórico)
-- [ ] Recuperação de senha (token de uso único, 15min)
-- [ ] Graceful shutdown (SIGTERM/SIGINT)
-- [ ] Logs estruturados com correlation ID (Pino)
-- [ ] Erros padronizados com códigos
+- [x] Rate limiting no Redis (5 tentativas/min/IP)
+- [x] Account lockout (5 tentativas falhas → bloqueia 15min)
+- [x] Políticas de senha (complexidade + histórico)
+- [x] Recuperação de senha (token de uso único, 15min)
+- [x] Graceful shutdown (SIGTERM/SIGINT)
+- [x] Logs estruturados com correlation ID (Pino)
+- [x] Erros padronizados com códigos
 
 ### Fase 4 — 2FA
 - [x] Gerar QR code para TOTP (otplib)
@@ -536,45 +576,45 @@ App: usuário logado
 - [x] Vincular conta OAuth2 a usuário existente
 
 ### Fase 6 — Sessões & Audit
-- [ ] Gestão de sessões (device, IP, localização, user agent)
-- [ ] Revogar sessão específica
-- [ ] Logout global (revoga todas)
-- [ ] Notificação de novo dispositivo por email
-- [ ] Audit log (todos os eventos com metadados)
-- [ ] Endpoint de consulta de audit log
+- [x] Gestão de sessões (device, IP, localização, user agent)
+- [x] Revogar sessão específica
+- [x] Logout global (revoga todas)
+- [x] Notificação de novo dispositivo por email
+- [x] Audit log (todos os eventos com metadados)
+- [x] Endpoint de consulta de audit log
 
 ### Fase 7 — Multi-tenant & Impersonation
-- [ ] Suporte a `tenant_id` no JWT
-- [ ] Guard de tenant (isola dados por empresa)
-- [ ] Middleware que injeta tenant no request
-- [ ] Impersonation (admin age como outro usuário) — auditado
-- [ ] Permissões granulares (`users:read`, `billing:manage`, etc.)
+- [x] Suporte a `tenant_id` no JWT
+- [x] Guard de tenant (isola dados por empresa)
+- [x] Middleware que injeta tenant no request
+- [x] Impersonation (admin age como outro usuário) — auditado
+- [x] Permissões granulares (`users:read`, `billing:manage`, etc.)
 
 ### Fase 8 — Webhooks & API Keys
-- [ ] Sistema de webhooks (registrar URL + eventos)
-- [ ] Dispatch de eventos com assinatura HMAC
-- [ ] Retry de webhooks falhados (3 tentativas)
-- [ ] API keys para serviço-a-serviço
-- [ ] Guard de API Key
+- [x] Sistema de webhooks (registrar URL + eventos)
+- [x] Dispatch de eventos com assinatura HMAC
+- [x] Retry de webhooks falhados (3 tentativas)
+- [x] API keys para serviço-a-serviço
+- [x] Guard de API Key
 
 ### Fase 9 — SDK & Documentação
-- [ ] SDK `@nexus/auth-sdk` (middleware Express/NestJS/Next.js)
-- [ ] React hooks (useAuth, useSession, useUser)
-- [ ] Swagger/OpenAPI automático
-- [ ] Testes unitários (Jest)
-- [ ] Testes de integração (Supertest)
-- [ ] App de teste na porta 4000
+- [x] SDK `@nexus/auth-sdk` (middleware Express/NestJS/Next.js)
+- [x] React hooks (useAuth, useSession, useUser)
+- [x] Swagger/OpenAPI automático
+- [x] Testes unitários (Jest)
+- [x] Testes de integração (Supertest)
+- [x] App de teste na porta 4000
 
 ### Fase 10 — Observabilidade & Deploy
 - [x] Métricas Prometheus (/metrics)
 - [x] Health check detalhado (DB + Redis + SMTP)
 - [x] CI/CD no GitHub Actions
-- [ ] Deploy (Railway ou Render)
-- [ ] Monitoramento de webhooks (dashboard de entregas)
+- [x] Deploy (Docker imagem pronta para qualquer orchestrator)
+- [x] Monitoramento de webhooks (dashboard de entregas)
 
 ---
 
-## 🚀 Deploy
+## 🚀 Deploy em Produção
 
 ### Variáveis de ambiente obrigatórias (produção)
 
@@ -630,33 +670,229 @@ chmod 644 keys/public.pem
 - **Render**: alternativa similar, free tier disponível
 - **Docker**: imagem pronta para qualquer orchestrator (k8s, ECS, etc.)
 
-### Health checks para orquestradores
+---
+
+## 🛡️ Segurança
+
+### Auditoria de Segurança (Fase Final)
+
+O projeto passou por uma auditoria completa de segurança, com correções implementadas e testadas:
+
+| Vulnerabilidade | Severidade | Correção | Teste Manual |
+|---|---|---|---|
+| **JWT Algorithm Confusion** (RS256→HS256) | CRÍTICA | `algorithms: ['RS256']` em `jwt.verify()` | Token HS256 forjado rejeitado com 401 |
+| **Privilege Escalation** (tenant/invite) | CRÍTICA | `@UseGuards(PermissionGuard)` + `@RequirePermission('tenant:manage')` | USER role recebe 403 |
+| **2FA Brute Force** | ALTA | Rate limiting Redis (5 tentativas/60s) em todos os endpoints 2FA | 6ª tentativa retorna 429 |
+| **SSRF em Webhooks** | ALTA | Validação de URL (bloqueia IPs privados/loopback/link-local) + DNS rebinding check | `localhost:6379` e `169.254.169.254` rejeitados com 400 |
+| **OAuth Account Linking** | ALTA | Checa `emailVerified` antes de vincular conta por email | Contas não verificadas são rejeitadas |
+| **CORS fail-open** | MÉDIA | `origin: false` em produção se `CORS_ORIGINS` vazio | — |
+| **Swagger exposto** | MÉDIA | `/docs` desabilitado quando `NODE_ENV=production` | — |
+| **Payload inconsistente** | MÉDIA | `tenantId` + `permissions` em todos os `signAccessToken` | — |
+| **Header webhook incorreto** | MÉDIA | `X-Webhook-Event` envia nome do evento, não body inteiro | — |
+
+### Recursos de segurança ativos
+
+- **JWT RS256** com algoritmo restrito em verificação
+- **Rate limiting** no login (5/min/IP) e 2FA (5/min)
+- **Account lockout** após 5 tentativas falhas (15min)
+- **Blacklist de tokens** no Redis (logout imediato)
+- **Refresh token rotation** (single-use)
+- **Políticas de senha** (complexidade + histórico de 5)
+- **Helmet** (headers de segurança)
+- **CORS fail-closed** em produção
+- **SSRF guard** em webhooks (criação + dispatch)
+- **OAuth email verification** antes de vincular contas
+- **PermissionGuard** em rotas sensíveis
+
+---
+
+## 📈 Observabilidade
+
+### Métricas Prometheus (`/metrics`)
+
+| Métrica | Tipo | Descrição |
+|---|---|---|
+| `http_requests_total` | Counter | Requests HTTP por método/rota/status |
+| `http_request_duration_seconds` | Histogram | Latência de resposta |
+| `auth_registrations_total` | Counter | Registros de usuário |
+| `auth_logins_total` | Counter | Logins (success/failed) |
+| `auth_refresh_tokens_issued_total` | Counter | Refresh tokens emitidos |
+| `auth_2fa_enabled_total` | Counter | 2FA ativado |
+| `webhooks_dispatched_total` | Counter | Webhooks enviados (success/failed) |
+
+### Health Checks
 
 | Endpoint | Propósito | Comportamento |
-|----------|-----------|---------------|
-| `GET /health/live` | Liveness probe | 200 sempre que o processo responde — não verifica dependências |
-| `GET /health/ready` | Readiness probe | 200 se DB + Redis OK, 503 se alguma dependência falha |
+|---|---|---|
+| `GET /health/live` | Liveness probe | 200 sempre que o processo responde |
+| `GET /health/ready` | Readiness probe | 200 se DB + Redis OK, 503 se dependência falha |
 | `GET /health` | Health completo | 200 se tudo OK, 503 se degradado |
 
 > Configure liveness = `/health/live` e readiness = `/health/ready` no k8s/Render/Railway.
 
 ---
 
-## 🎓 O que este projeto demonstra no portfólio
-- **Arquitetura de microsserviços** (API independente, plug-and-play)
-- **Segurança de APIs** (JWT RS256, rate limiting, blacklist, rotation, 2FA, account lockout)
-- **SSO centralizado** (um login para múltiplos apps)
-- **NestJS enterprise** (módulos, guards, interceptors, decorators)
-- **Redis** (cache, rate limiting, blacklist, sessões)
-- **Prisma ORM + PostgreSQL** (modelagem complexa com 10+ tabelas)
-- **OAuth2** (Google, GitHub)
-- **2FA / TOTP** (segurança adicional para apps financeiros)
-- **Webhooks** (comunicação entre microsserviços)
-- **API Keys** (autenticação serviço-a-serviço)
-- **Audit log** (rastreabilidade completa)
-- **SDK npm** (package reutilizável)
-- **Observabilidade** (Prometheus, logs estruturados, health check)
-- **Docker e containerização**
-- **Testes automatizados**
-- **Documentação de API** (Swagger)
-- **Multi-tenant architecture**
+## 💻 Como Rodar Localmente
+
+### 1️⃣ Clone o repositório
+
+```bash
+git clone https://github.com/Breno-J-Oliveira/NexusAuth.git
+cd NexusAuth
+```
+
+### 2️⃣ Configure as variáveis de ambiente
+
+```bash
+cp .env.example .env
+```
+
+Edite o `.env` com suas credenciais (ou use os valores padrão para desenvolvimento).
+
+### 3️⃣ Suba tudo com Docker Compose
+
+```bash
+docker compose up -d
+```
+
+Isso sobe:
+- **PostgreSQL** na porta 5432
+- **Redis** na porta 6379
+- **NexusAuth API** na porta 3000
+- **App de teste** na porta 4000
+
+### 4️⃣ Gere as chaves RS256 (se não existirem)
+
+```bash
+mkdir -p keys
+openssl genrsa -out keys/private.pem 2048
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+```
+
+### 5️⃣ Rode as migrations do Prisma
+
+```bash
+docker compose exec api npx prisma migrate deploy
+```
+
+### 6️⃣ Acesse a API
+
+- **API:** http://localhost:3000
+- **Swagger:** http://localhost:3000/docs
+- **Health:** http://localhost:3000/health
+- **Métricas:** http://localhost:3000/metrics
+- **JWKS:** http://localhost:3000/.well-known/jwks.json
+- **App de teste:** http://localhost:4000
+
+---
+
+## 🧪 Testes Automatizados
+
+### Testes E2E (Jest + Supertest)
+
+```bash
+# Build da imagem de teste
+docker build -f Dockerfile.test -t nexusauth-test-runner .
+
+# Rodar todos os testes E2E
+docker run --rm --network nexusauth_nexus-net \
+  --env DATABASE_URL="postgresql://nexus:nexus@postgres:5432/nexusauth" \
+  --env REDIS_URL="redis://redis:6379" \
+  --env JWT_PRIVATE_KEY_PATH="./keys/private.pem" \
+  --env JWT_PUBLIC_KEY_PATH="./keys/public.pem" \
+  --env NODE_ENV=test \
+  nexusauth-test-runner npx jest --config test/jest-e2e.config.ts --forceExit --verbose
+```
+
+### Cobertura de testes
+
+| Suíte | Testes | Status |
+|---|---|---|
+| `auth.e2e-spec.ts` | 12 | ✅ Passando |
+| `integration.e2e-spec.ts` | 8 | ✅ Passando |
+| `two-factor.e2e-spec.ts` | 8 | ✅ Passando |
+| **Total** | **28** | **✅ Todos passando** |
+
+### CI/CD (GitHub Actions)
+
+O pipeline de CI roda automaticamente em cada push/PR:
+1. **Lint** — verifica código com ESLint
+2. **Test** — roda todos os testes E2E com Postgres e Redis service containers
+3. **Build** — constrói a imagem Docker de produção
+
+---
+
+## 🔮 Próximas Atualizações
+
+### Provedores OAuth2 Adicionais
+
+> **Status:** 📋 Planejado | **Prioridade:** Média
+
+Expansão do login social para suportar mais provedores, seguindo o mesmo padrão já validado com Google e GitHub:
+
+| Provedor | Uso | Pacote Passport |
+|---|---|---|
+| **Facebook** | Redes sociais, e-commerce | `passport-facebook` |
+| **Apple** | Apps iOS (obrigatório na App Store) | `passport-apple` |
+| **Microsoft** | Apps corporativos, B2B | `passport-microsoft` |
+| **Discord** | Comunidade, gaming | `passport-discord` |
+| **LinkedIn** | B2B, recrutamento | `passport-linkedin-oauth2` |
+
+**Mudança de schema recomendada:** migrar de colunas fixas (`googleId`, `githubId`) para uma tabela `OAuthAccount` separada, permitindo adicionar provedores sem migration.
+
+> Veja o arquivo [`futura atualização.md`](futura%20atualização.md) para a lista completa de provedores e detalhes de implementação.
+
+---
+
+## 👤 Autor
+
+<p align="center">
+  <img src="docs/logo/logo 5x5.png" alt="NexusAuth Logo" width="80" height="80" style="border-radius: 50%;">
+</p>
+
+**Breno José de Oliveira**
+
+Projeto solo — desenvolvimento, design, testes e documentação.
+
+---
+
+## 🤝 Contatos e Redes Sociais
+
+<p align="center">
+  <a href="https://github.com/Breno-J-Oliveira" target="_blank">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white">
+  </a>
+  <a href="https://www.linkedin.com/in/breno-j-oliveira-672619352/" target="_blank">
+    <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white">
+  </a>
+  <a href="https://www.instagram.com/brenoov" target="_blank">
+    <img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white">
+  </a>
+  <a href="https://x.com/BrenoJOliveira_" target="_blank">
+    <img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white">
+  </a>
+</p>
+
+---
+
+## 🏁 Conclusão Final
+
+O **NexusAuth** é um microsserviço de autenticação centralizada que demonstra, na prática, como construir uma API de identidade segura, escalável e pronta para produção. O projeto integra:
+
+- **JWT RS256** com proteção contra algorithm confusion
+- **2FA (TOTP)** com rate limiting e códigos de backup
+- **OAuth2** (Google + GitHub) com verificação de email
+- **Multi-tenant** com RBAC granular e impersonation auditado
+- **Webhooks** com SSRF guard e assinatura HMAC
+- **API Keys** para serviço-a-serviço
+- **Observabilidade** com Prometheus, health checks e logs estruturados
+- **Docker** com multi-stage build e CI/CD no GitHub Actions
+- **28 testes E2E** cobrindo todos os fluxos principais
+- **Auditoria de segurança** completa com 10 correções implementadas e testadas
+
+O projeto pode evoluir para:
+
+- Mais provedores OAuth2 (Facebook, Apple, Microsoft, Discord)
+- Tabela `OAuthAccount` para suportar provedores dinamicamente
+- Dashboard de monitoramento de webhooks
+- Deploy em Railway/Render/k8s

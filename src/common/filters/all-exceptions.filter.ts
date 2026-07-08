@@ -22,6 +22,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message = 'Internal server error';
     let details: unknown;
 
+    const correlationId = request.headers['x-request-id'] as string;
+
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const res = exception.getResponse();
@@ -48,10 +50,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
         }
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // M3 fix: don't leak internal error details to client
+      this.logger.error(
+        JSON.stringify({
+          correlationId,
+          statusCode,
+          code,
+          message: exception.message,
+          stack: exception.stack,
+          path: request.url,
+          method: request.method,
+        }),
+      );
     }
-
-    const correlationId = request.headers['x-request-id'] as string;
 
     if (statusCode >= 500) {
       this.logger.error(

@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('audit-log')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -17,6 +18,7 @@ export class AuditController {
   @Get()
   @Roles('ADMIN')
   async list(
+    @CurrentUser() user: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('userId') userId?: string,
@@ -25,10 +27,18 @@ export class AuditController {
     @Query('endDate') endDate?: string,
   ) {
     const pageNum = parseInt(page ?? '1', 10);
-    const limitNum = parseInt(limit ?? '20', 10);
+    const limitNum = Math.min(parseInt(limit ?? '20', 10), 100);
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
+
+    // C1 fix: filter by tenantId to prevent cross-tenant data leakage
+    // If user has no tenantId (global admin), they can see all logs
+    // If user has tenantId, they can only see logs of users in their tenant
+    if (user.tenantId) {
+      where.user = { tenantId: user.tenantId };
+    }
+
     if (userId) where.userId = userId;
     if (action) where.action = action;
     if (startDate || endDate) {

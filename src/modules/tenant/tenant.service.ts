@@ -22,43 +22,45 @@ export class TenantService {
   ) {}
 
   async createTenant(userId: string, dto: CreateTenantDto) {
-    const existing = await this.prisma.tenant.findUnique({
-      where: { slug: dto.slug },
-    });
-    if (existing) {
-      throw new ConflictException({
-        code: 'SLUG_ALREADY_EXISTS',
-        message: 'Tenant slug already exists',
+    // M3 fix: use upsert pattern to avoid race condition on slug
+    try {
+      const tenant = await this.prisma.tenant.create({
+        data: {
+          name: dto.name,
+          slug: dto.slug,
+        },
       });
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          tenantId: tenant.id,
+          role: 'ADMIN',
+          permissions: ['tenant:manage', 'users:read', 'users:write', 'billing:manage'],
+        },
+      });
+
+      await this.auditService.log('TENANT_USER_INVITED', {
+        userId,
+        metadata: { tenantId: tenant.id, action: 'tenant_created' },
+      });
+
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        plan: tenant.plan,
+      };
+    } catch (err: any) {
+      // M3 fix: catch P2002 (unique constraint violation) and return clean ConflictException
+      if (err.code === 'P2002') {
+        throw new ConflictException({
+          code: 'SLUG_ALREADY_EXISTS',
+          message: 'Tenant slug already exists',
+        });
+      }
+      throw err;
     }
-
-    const tenant = await this.prisma.tenant.create({
-      data: {
-        name: dto.name,
-        slug: dto.slug,
-      },
-    });
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        tenantId: tenant.id,
-        role: 'ADMIN',
-        permissions: ['tenant:manage', 'users:read', 'users:write', 'billing:manage'],
-      },
-    });
-
-    await this.auditService.log('TENANT_USER_INVITED', {
-      userId,
-      metadata: { tenantId: tenant.id, action: 'tenant_created' },
-    });
-
-    return {
-      id: tenant.id,
-      name: tenant.name,
-      slug: tenant.slug,
-      plan: tenant.plan,
-    };
   }
 
   async invite(userId: string, dto: InviteTenantDto) {
@@ -99,9 +101,12 @@ export class TenantService {
       },
     });
 
-    console.log(
-      `[Tenant Invite] Link: http://localhost:3000/tenant/invite/accept?token=${token}`,
-    );
+    // M2 fix: only log invite links in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `[Tenant Invite] Link: http://localhost:3000/tenant/invite/accept?token=${token}`,
+      );
+    }
 
     await this.auditService.log('TENANT_USER_INVITED', {
       userId,
@@ -119,30 +124,41 @@ export class TenantService {
   }
 
   async acceptInvitation(userId: string, dto: AcceptInvitationDto) {
-    const invitation = await this.prisma.tenantInvitation.findUnique({
-      where: { token: dto.token },
+    // V6 fix: atomic update — only set accepted=true if not already accepted and not expired
+    const result = await this.prisma.tenantInvitation.updateMany({
+      where: {
+        token: dto.token,
+        accepted: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { accepted: true },
     });
 
-    if (!invitation) {
-      throw new NotFoundException({
-        code: 'INVITATION_NOT_FOUND',
-        message: 'Invitation not found',
+    if (result.count === 0) {
+      const invitation = await this.prisma.tenantInvitation.findUnique({
+        where: { token: dto.token },
       });
-    }
-
-    if (invitation.accepted) {
-      throw new BadRequestException({
-        code: 'INVITATION_ALREADY_ACCEPTED',
-        message: 'Invitation already accepted',
-      });
-    }
-
-    if (invitation.expiresAt < new Date()) {
+      if (!invitation) {
+        throw new NotFoundException({
+          code: 'INVITATION_NOT_FOUND',
+          message: 'Invitation not found',
+        });
+      }
+      if (invitation.accepted) {
+        throw new BadRequestException({
+          code: 'INVITATION_ALREADY_ACCEPTED',
+          message: 'Invitation already accepted',
+        });
+      }
       throw new BadRequestException({
         code: 'INVITATION_EXPIRED',
         message: 'Invitation has expired',
       });
     }
+
+    const invitation = await this.prisma.tenantInvitation.findUnique({
+      where: { token: dto.token },
+    });
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -154,30 +170,24 @@ export class TenantService {
       });
     }
 
-    if (user.email !== invitation.email) {
+    if (user.email !== invitation!.email) {
       throw new ForbiddenException({
         code: 'EMAIL_MISMATCH',
         message: 'This invitation is for a different email',
       });
     }
 
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          tenantId: invitation.tenantId,
-          role: invitation.role,
-        },
-      }),
-      this.prisma.tenantInvitation.update({
-        where: { id: invitation.id },
-        data: { accepted: true },
-      }),
-    ]);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        tenantId: invitation!.tenantId,
+        role: invitation!.role,
+      },
+    });
 
     await this.auditService.log('TENANT_USER_INVITED', {
       userId,
-      metadata: { tenantId: invitation.tenantId, action: 'invitation_accepted' },
+      metadata: { tenantId: invitation!.tenantId, action: 'invitation_accepted' },
     });
 
     return { message: 'Invitation accepted successfully' };

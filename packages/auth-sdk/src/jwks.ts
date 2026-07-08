@@ -44,6 +44,11 @@ export class JwksClient {
           reject(err);
           return;
         }
+        // V2 fix: reject tokens that are not access or impersonation type
+        if (payload.type !== 'access' && payload.type !== 'impersonation') {
+          reject(new Error('Invalid token type'));
+          return;
+        }
         resolve({
           sub: payload.sub,
           email: payload.email,

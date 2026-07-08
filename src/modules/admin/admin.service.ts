@@ -46,6 +46,22 @@ export class AdminService {
       });
     }
 
+    // B4 fix: prevent admin from impersonating another admin
+    if (target.role === 'ADMIN') {
+      throw new ForbiddenException({
+        code: 'CANNOT_IMPERSONATE_ADMIN',
+        message: 'Cannot impersonate another admin user',
+      });
+    }
+
+    // V1 fix: prevent cross-tenant impersonation
+    if (admin.tenantId && target.tenantId && admin.tenantId !== target.tenantId) {
+      throw new ForbiddenException({
+        code: 'CROSS_TENANT_IMPERSONATION_BLOCKED',
+        message: 'Cannot impersonate users from other tenants',
+      });
+    }
+
     const impersonationToken = this.jwtService.signImpersonationToken({
       sub: target.id,
       email: target.email,

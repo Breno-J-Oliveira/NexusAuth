@@ -36,7 +36,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-RUN mkdir -p /app/keys && chown -R node:node /app
+RUN mkdir -p /app/keys && chown node:node /app/keys
 
 USER node
 

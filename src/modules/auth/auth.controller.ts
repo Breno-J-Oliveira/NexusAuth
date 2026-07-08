@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Post,
-  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -43,7 +42,10 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Email já registrado' })
   async register(
     @Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto,
+    @Req() req: Request,
   ) {
+    const ipAddress = req.ip || 'unknown';
+    await this.authService.checkGenericRateLimit(`ratelimit:register:${ipAddress}`, 5, 300);
     return this.authService.register(dto);
   }
 
@@ -70,7 +72,10 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Refresh token inválido' })
   async refresh(
     @Body(new ZodValidationPipe(refreshSchema)) dto: RefreshDto,
+    @Req() req: Request,
   ) {
+    const ipAddress = req.ip || 'unknown';
+    await this.authService.checkGenericRateLimit(`ratelimit:refresh:${ipAddress}`, 30, 60);
     return this.authService.refresh(dto);
   }
 
@@ -91,8 +96,10 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Token inválido ou expirado' })
   async resetPassword(
     @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordDto,
+    @Req() req: Request,
   ) {
-    return this.authService.resetPassword(dto);
+    const ipAddress = req.ip || 'unknown';
+    return this.authService.resetPassword(dto, ipAddress);
   }
 
   @Public()
@@ -105,10 +112,19 @@ export class AuthController {
   }
 
   @Public()
-  @Get('magic-link/verify')
+  @Post('magic-link/verify')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Verificar magic link token' })
-  async verifyMagicLink(@Query('token') token: string) {
+  async verifyMagicLink(@Body('token') token: string) {
     return this.authService.verifyMagicLink(token);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Verificar email com token' })
+  async verifyEmail(@Body('token') token: string) {
+    return this.authService.verifyEmail(token);
   }
 
   @Post('logout')

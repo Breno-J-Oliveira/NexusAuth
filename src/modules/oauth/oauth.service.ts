@@ -34,10 +34,18 @@ export class OAuthService {
       });
 
       if (user) {
+        // V9 fix: don't auto-link OAuth account to existing email without proof of ownership
         if (!profile.emailVerified) {
           throw new UnauthorizedException({
             code: 'EMAIL_NOT_VERIFIED_BY_PROVIDER',
             message: 'Email is not verified by the OAuth provider. Cannot link to existing account.',
+          });
+        }
+        // V9 fix: if user already has a password set, don't auto-link — require re-authentication
+        if (user.password) {
+          throw new UnauthorizedException({
+            code: 'OAUTH_LINK_REQUIRES_REAUTH',
+            message: 'An account with this email already exists. Please log in with your password and link your OAuth account from settings.',
           });
         }
         user = await this.prisma.user.update({
@@ -96,6 +104,7 @@ export class OAuthService {
       role,
       tenantId: tenantId ?? undefined,
       permissions: permissions ?? undefined,
+      sessionId: session.id,
     });
 
     await this.auditService.log('LOGIN', {

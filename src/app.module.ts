@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { configuration } from './config/configuration';
 import { validateEnv } from './config/env';
@@ -16,6 +17,10 @@ import { AdminModule } from './modules/admin/admin.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { JwtService } from './modules/auth/jwt.service';
+import { RedisService } from './redis/redis.service';
+import { Reflector } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -38,6 +43,15 @@ import { MetricsModule } from './modules/metrics/metrics.module';
     WebhooksModule,
     ApiKeysModule,
     MetricsModule,
+  ],
+  // A4 fix: Register JwtAuthGuard as global guard — secure by default, @Public() is the exception
+  providers: [
+    {
+      provide: APP_GUARD,
+      useFactory: (reflector: Reflector, jwtService: JwtService, redisService: RedisService) =>
+        new JwtAuthGuard(reflector, jwtService, redisService),
+      inject: [Reflector, JwtService, RedisService],
+    },
   ],
 })
 export class AppModule {}

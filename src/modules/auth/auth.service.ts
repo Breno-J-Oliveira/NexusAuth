@@ -1,11 +1,11 @@
 import {
   Injectable,
-  ConflictException,
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -35,17 +35,18 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    // M1 fix: rate limit registration by IP (handled at controller level via req.ip)
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
     if (existing) {
-      throw new ConflictException({
-        code: 'EMAIL_ALREADY_REGISTERED',
-        message: 'Email already registered',
-      });
+      // V3 fix: return same response shape as success case to prevent enumeration
+      return {
+        message: 'If this email is not already registered, an account has been created and a verification link has been sent.',
+      };
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const hashedPassword = await bcrypt.hash(dto.password, 12);
 
     const user = await this.prisma.user.create({
       data: {
@@ -65,9 +66,12 @@ export class AuthService {
       },
     });
 
-    console.log(
-      `[Email Verification] Link: http://localhost:3000/auth/verify-email?token=${token}`,
-    );
+    // M2 fix: only log verification links in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `[Email Verification] Link: http://localhost:3000/auth/verify-email?token=${token}`,
+      );
+    }
 
     await this.auditService.log('REGISTER', { userId: user.id });
     this.metricsService.authRegistrationsTotal.inc();
@@ -78,10 +82,9 @@ export class AuthService {
       name: user.name,
     }, user.tenantId);
 
+    // V3 fix: return same shape as existing-email case — no id/email/name fields
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
+      message: 'If this email is not already registered, an account has been created and a verification link has been sent.',
     };
   }
 
@@ -97,6 +100,25 @@ export class AuthService {
         {
           code: 'RATE_LIMITED',
           message: 'Too many login attempts. Please try again later.',
+          retryAfter: ttl,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  // M1 fix: generic rate limit for any endpoint
+  async checkGenericRateLimit(key: string, max: number, ttlSeconds: number): Promise<void> {
+    const count = await this.redisService.incr(key);
+    if (count === 1) {
+      await this.redisService.expire(key, ttlSeconds);
+    }
+    if (count > max) {
+      const ttl = await this.redisService.ttl(key);
+      throw new HttpException(
+        {
+          code: 'RATE_LIMITED',
+          message: 'Too many requests. Please try again later.',
           retryAfter: ttl,
         },
         HttpStatus.TOO_MANY_REQUESTS,
@@ -217,6 +239,7 @@ export class AuthService {
       role: user.role,
       tenantId: user.tenantId ?? undefined,
       permissions: user.permissions ?? undefined,
+      sessionId: session.id,
     });
 
     await this.auditService.log('LOGIN', {
@@ -252,10 +275,15 @@ export class AuthService {
     });
 
     if (!existingSession) {
-      const location = this.auditService.getLocation(ipAddress);
-      console.log(
-        `[New Device] User ${userId} logged in from a new device. IP: ${ipAddress}, Location: ${location}, User-Agent: ${userAgent}, Time: ${new Date().toISOString()}`,
-      );
+      // V16 fix: use Logger instead of console.log, avoid PII in production
+      const logger = new Logger('NewDeviceDetection');
+      if (process.env.NODE_ENV !== 'production') {
+        logger.log(
+          `User ${userId} logged in from a new device. IP: ${ipAddress}, User-Agent: ${userAgent}`,
+        );
+      } else {
+        logger.log(`User ${userId} logged in from a new device.`);
+      }
     }
   }
 
@@ -268,10 +296,42 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshDto) {
+    // C3 fix: atomic update — only revoke if not already revoked (prevents race condition)
+    const result = await this.prisma.refreshToken.updateMany({
+      where: {
+        token: dto.refreshToken,
+        revoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { revoked: true },
+    });
+
+    if (result.count === 0) {
+      // Token is either invalid, already revoked, or expired
+      const stored = await this.prisma.refreshToken.findUnique({
+        where: { token: dto.refreshToken },
+      });
+      if (!stored) {
+        throw new UnauthorizedException({
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid refresh token',
+        });
+      }
+      if (stored.revoked) {
+        throw new UnauthorizedException({
+          code: 'REFRESH_TOKEN_REVOKED',
+          message: 'Refresh token has been revoked',
+        });
+      }
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_EXPIRED',
+        message: 'Refresh token has expired',
+      });
+    }
+
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: dto.refreshToken },
     });
-
     if (!stored) {
       throw new UnauthorizedException({
         code: 'INVALID_REFRESH_TOKEN',
@@ -279,24 +339,16 @@ export class AuthService {
       });
     }
 
-    if (stored.revoked) {
-      throw new UnauthorizedException({
-        code: 'REFRESH_TOKEN_REVOKED',
-        message: 'Refresh token has been revoked',
-      });
-    }
-
-    if (stored.expiresAt < new Date()) {
-      throw new UnauthorizedException({
-        code: 'REFRESH_TOKEN_EXPIRED',
-        message: 'Refresh token has expired',
-      });
-    }
-
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revoked: true },
+    // C2 fix: check that the session is still active
+    const session = await this.prisma.session.findUnique({
+      where: { id: stored.sessionId },
     });
+    if (!session || !session.active) {
+      throw new UnauthorizedException({
+        code: 'SESSION_REVOKED',
+        message: 'Session has been revoked',
+      });
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: stored.userId },
@@ -325,6 +377,7 @@ export class AuthService {
       role: user.role,
       tenantId: user.tenantId ?? undefined,
       permissions: user.permissions ?? undefined,
+      sessionId: stored.sessionId,
     });
 
     this.metricsService.authRefreshTokensIssuedTotal.inc();
@@ -349,10 +402,23 @@ export class AuthService {
       });
     }
 
-    await this.prisma.session.updateMany({
+    // C2 fix: revoke ALL refresh tokens for user's active sessions, not just the one sent by client
+    const activeSessions = await this.prisma.session.findMany({
       where: { userId: user.sub, active: true },
-      data: { active: false },
+      select: { id: true },
     });
+    const sessionIds = activeSessions.map((s) => s.id);
+
+    await this.prisma.$transaction([
+      this.prisma.session.updateMany({
+        where: { userId: user.sub, active: true },
+        data: { active: false },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { sessionId: { in: sessionIds }, revoked: false },
+        data: { revoked: true },
+      }),
+    ]);
 
     await this.auditService.log('LOGOUT', { userId: user.sub });
 
@@ -364,6 +430,8 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
+    // M1 fix: rate limit password change attempts
+    await this.checkGenericRateLimit(`ratelimit:change-pw:${userId}`, 5, 60);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -399,7 +467,7 @@ export class AuthService {
       }
     }
 
-    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    const newHash = await bcrypt.hash(dto.newPassword, 12);
     const newHistory = [...user.passwordHistory, newHash].slice(-5);
 
     await this.prisma.user.update({
@@ -409,6 +477,25 @@ export class AuthService {
         passwordHistory: newHistory,
       },
     });
+
+    // A3 fix: revoke all sessions and refresh tokens after password change
+    const activeSessions = await this.prisma.session.findMany({
+      where: { userId, active: true },
+      select: { id: true },
+    });
+    const sessionIds = activeSessions.map((s) => s.id);
+    if (sessionIds.length > 0) {
+      await this.prisma.$transaction([
+        this.prisma.session.updateMany({
+          where: { id: { in: sessionIds } },
+          data: { active: false },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { sessionId: { in: sessionIds }, revoked: false },
+          data: { revoked: true },
+        }),
+      ]);
+    }
 
     await this.auditService.log('PASSWORD_CHANGED', { userId });
 
@@ -420,6 +507,8 @@ export class AuthService {
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
+    // M1 fix: rate limit forgot-password by email
+    await this.checkGenericRateLimit(`ratelimit:forgot:${dto.email}`, 3, 300);
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -434,9 +523,12 @@ export class AuthService {
         },
       });
 
-      console.log(
-        `[Password Reset] Link: http://localhost:3000/auth/reset-password?token=${token}`,
-      );
+      // M2 fix: only log reset links in non-production
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(
+          `[Password Reset] Link: http://localhost:3000/auth/reset-password?token=${token}`,
+        );
+      }
 
       await this.auditService.log('PASSWORD_RESET_REQUESTED', { userId: user.id });
     }
@@ -444,34 +536,47 @@ export class AuthService {
     return { message: 'If the email exists, a reset link has been sent' };
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
-    const reset = await this.prisma.passwordReset.findUnique({
-      where: { token: dto.token },
+  async resetPassword(dto: ResetPasswordDto, ipAddress: string) {
+    // V10 fix: rate limit reset-password per-IP instead of global
+    await this.checkGenericRateLimit(`ratelimit:reset-pw:${ipAddress}`, 10, 60);
+    // V4 fix: atomic update — only set used=true if not already used and not expired
+    const result = await this.prisma.passwordReset.updateMany({
+      where: {
+        token: dto.token,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { used: true },
     });
 
-    if (!reset) {
-      throw new BadRequestException({
-        code: 'INVALID_RESET_TOKEN',
-        message: 'Invalid or expired reset token',
+    if (result.count === 0) {
+      const reset = await this.prisma.passwordReset.findUnique({
+        where: { token: dto.token },
       });
-    }
-
-    if (reset.used) {
-      throw new BadRequestException({
-        code: 'RESET_TOKEN_ALREADY_USED',
-        message: 'Reset token has already been used',
-      });
-    }
-
-    if (reset.expiresAt < new Date()) {
+      if (!reset) {
+        throw new BadRequestException({
+          code: 'INVALID_RESET_TOKEN',
+          message: 'Invalid or expired reset token',
+        });
+      }
+      if (reset.used) {
+        throw new BadRequestException({
+          code: 'RESET_TOKEN_ALREADY_USED',
+          message: 'Reset token has already been used',
+        });
+      }
       throw new BadRequestException({
         code: 'RESET_TOKEN_EXPIRED',
         message: 'Reset token has expired',
       });
     }
 
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { token: dto.token },
+    });
+
     const user = await this.prisma.user.findUnique({
-      where: { id: reset.userId },
+      where: { id: reset!.userId },
     });
     if (!user) {
       throw new NotFoundException({
@@ -490,22 +595,35 @@ export class AuthService {
       }
     }
 
-    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    const newHash = await bcrypt.hash(dto.newPassword, 12);
     const newHistory = [...user.passwordHistory, newHash].slice(-5);
 
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          password: newHash,
-          passwordHistory: newHistory,
-        },
-      }),
-      this.prisma.passwordReset.update({
-        where: { id: reset.id },
-        data: { used: true },
-      }),
-    ]);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: newHash,
+        passwordHistory: newHistory,
+      },
+    });
+
+    // A3 fix: revoke all sessions and refresh tokens after password reset
+    const activeSessions = await this.prisma.session.findMany({
+      where: { userId: user.id, active: true },
+      select: { id: true },
+    });
+    const sessionIds = activeSessions.map((s) => s.id);
+    if (sessionIds.length > 0) {
+      await this.prisma.$transaction([
+        this.prisma.session.updateMany({
+          where: { id: { in: sessionIds } },
+          data: { active: false },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { sessionId: { in: sessionIds }, revoked: false },
+          data: { revoked: true },
+        }),
+      ]);
+    }
 
     await this.auditService.log('PASSWORD_RESET_COMPLETED', { userId: user.id });
 
@@ -513,6 +631,8 @@ export class AuthService {
   }
 
   async magicLink(dto: MagicLinkDto) {
+    // M1 fix: rate limit magic-link by email
+    await this.checkGenericRateLimit(`ratelimit:magic:${dto.email}`, 3, 300);
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -528,42 +648,56 @@ export class AuthService {
         },
       });
 
-      console.log(
-        `[Magic Link] Login link: http://localhost:3000/auth/magic-link/verify?token=${token}`,
-      );
+      // M2 fix: only log magic links in non-production
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(
+          `[Magic Link] Login link: http://localhost:3000/auth/magic-link/verify?token=${token}`,
+        );
+      }
     }
 
     return { message: 'If the email exists, a magic link has been sent' };
   }
 
   async verifyMagicLink(token: string) {
-    const magicLink = await this.prisma.magicLink.findUnique({
-      where: { token },
+    // V5 fix: atomic update — only set used=true if not already used and not expired
+    const result = await this.prisma.magicLink.updateMany({
+      where: {
+        token,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { used: true },
     });
 
-    if (!magicLink) {
-      throw new BadRequestException({
-        code: 'INVALID_MAGIC_LINK',
-        message: 'Invalid or expired magic link',
+    if (result.count === 0) {
+      const magicLink = await this.prisma.magicLink.findUnique({
+        where: { token },
       });
-    }
-
-    if (magicLink.used) {
-      throw new BadRequestException({
-        code: 'MAGIC_LINK_ALREADY_USED',
-        message: 'Magic link has already been used',
-      });
-    }
-
-    if (magicLink.expiresAt < new Date()) {
+      if (!magicLink) {
+        throw new BadRequestException({
+          code: 'INVALID_MAGIC_LINK',
+          message: 'Invalid or expired magic link',
+        });
+      }
+      if (magicLink.used) {
+        throw new BadRequestException({
+          code: 'MAGIC_LINK_ALREADY_USED',
+          message: 'Magic link has already been used',
+        });
+      }
       throw new BadRequestException({
         code: 'MAGIC_LINK_EXPIRED',
         message: 'Magic link has expired',
       });
     }
 
+    const magicLink = await this.prisma.magicLink.findUnique({
+      where: { token },
+    });
+
     const user = await this.prisma.user.findUnique({
-      where: { id: magicLink.userId },
+      where: { id: magicLink!.userId },
     });
     if (!user) {
       throw new NotFoundException({
@@ -571,11 +705,6 @@ export class AuthService {
         message: 'User not found',
       });
     }
-
-    await this.prisma.magicLink.update({
-      where: { id: magicLink.id },
-      data: { used: true },
-    });
 
     if (user.twoFactorEnabled) {
       const challengeToken = this.jwtService.signChallengeToken({
@@ -612,6 +741,7 @@ export class AuthService {
       role: user.role,
       tenantId: user.tenantId ?? undefined,
       permissions: user.permissions ?? undefined,
+      sessionId: session.id,
     });
 
     await this.auditService.log('LOGIN', {
@@ -626,6 +756,56 @@ export class AuthService {
     }, user.tenantId);
 
     return { accessToken, refreshToken };
+  }
+
+  // V13 fix: implement email verification endpoint
+  async verifyEmail(token: string) {
+    const verification = await this.prisma.emailVerification.findUnique({
+      where: { token },
+    });
+
+    if (!verification) {
+      throw new BadRequestException({
+        code: 'INVALID_VERIFICATION_TOKEN',
+        message: 'Invalid verification token',
+      });
+    }
+
+    if (verification.used) {
+      throw new BadRequestException({
+        code: 'VERIFICATION_TOKEN_ALREADY_USED',
+        message: 'Verification token has already been used',
+      });
+    }
+
+    if (verification.expiresAt < new Date()) {
+      throw new BadRequestException({
+        code: 'VERIFICATION_TOKEN_EXPIRED',
+        message: 'Verification token has expired',
+      });
+    }
+
+    // V13 fix: atomic update to prevent race condition
+    const result = await this.prisma.emailVerification.updateMany({
+      where: { token, used: false, expiresAt: { gt: new Date() } },
+      data: { used: true },
+    });
+
+    if (result.count === 0) {
+      throw new BadRequestException({
+        code: 'VERIFICATION_TOKEN_INVALID',
+        message: 'Invalid or expired verification token',
+      });
+    }
+
+    await this.prisma.user.update({
+      where: { id: verification.userId },
+      data: { emailVerified: true },
+    });
+
+    await this.auditService.log('EMAIL_VERIFIED', { userId: verification.userId });
+
+    return { message: 'Email verified successfully' };
   }
 
   async me(userId: string) {

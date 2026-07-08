@@ -30,6 +30,9 @@ const envSchema = z.object({
   GITHUB_CALLBACK_URL: z.string().optional(),
 
   AUDIT_LOG_RETENTION_DAYS: z.coerce.number().default(90),
+
+  // A1 fix: encryption key for TOTP secrets at rest (AES-256-GCM)
+  ENCRYPTION_KEY: z.string().length(64).optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -5,8 +5,11 @@ import {
   Body,
   Req,
   UseGuards,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Request } from 'express';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
@@ -15,12 +18,16 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RedisService } from '../../redis/redis.service';
 
 @ApiTags('Tenant')
 @Controller('tenant')
 @UseGuards(JwtAuthGuard)
 export class TenantController {
-  constructor(private tenantService: TenantService) {}
+  constructor(
+    private tenantService: TenantService,
+    private redisService: RedisService,
+  ) {}
 
   @Post()
   @ApiBearerAuth('access-token')
@@ -28,7 +35,19 @@ export class TenantController {
   async create(
     @CurrentUser() user: any,
     @Body() dto: CreateTenantDto,
+    @Req() req: Request,
   ) {
+    // V11 fix: rate limit tenant creation
+    const ipAddress = req.ip || 'unknown';
+    const key = `ratelimit:tenant:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) await this.redisService.expire(key, 300);
+    if (count > 3) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.tenantService.createTenant(user.sub, dto);
   }
 

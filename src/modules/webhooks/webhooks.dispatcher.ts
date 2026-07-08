@@ -55,8 +55,9 @@ export class WebhooksDispatcher {
       .update(body)
       .digest('hex');
 
+    let pinnedUrl: string;
     try {
-      await validateWebhookUrl(url);
+      pinnedUrl = await validateWebhookUrl(url);
     } catch (err: any) {
       this.logger.error(`Webhook ${webhookId} URL blocked by SSRF guard: ${err.message?.message ?? err.message}`);
       this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
@@ -64,7 +65,7 @@ export class WebhooksDispatcher {
     }
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
-      const result = await this.deliver(url, body, signature, payload.event, attempt);
+      const result = await this.deliver(pinnedUrl, body, signature, payload.event, attempt, url);
 
       await this.prisma.webhookDelivery.create({
         data: {
@@ -100,22 +101,26 @@ export class WebhooksDispatcher {
   }
 
   private async deliver(
-    url: string,
+    pinnedUrl: string,
     body: string,
     signature: string,
     eventName: string,
     attempt: number,
+    originalUrl: string,
   ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      const res = await fetch(url, {
+      const parsed = new URL(originalUrl);
+      const res = await fetch(pinnedUrl, {
         method: 'POST',
+        redirect: 'manual',
         headers: {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
           'X-Webhook-Event': eventName,
+          'Host': parsed.host,
         },
         body,
         signal: controller.signal,
