@@ -85,6 +85,28 @@ export class TenantService {
         message: 'You must belong to a tenant to invite users',
       });
     }
+    
+    // CRITICAL FIX: Verify admin has tenant:manage permission
+    if (!admin.permissions.includes('tenant:manage') && admin.role !== 'ADMIN') {
+      throw new ForbiddenException({
+        code: 'INSUFFICIENT_PERMISSIONS',
+        message: 'You do not have permission to invite users',
+      });
+    }
+
+    // CRITICAL FIX: Prevent inviting users who are already in this tenant
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email,
+        tenantId: admin.tenantId,
+      },
+    });
+    if (existingUser) {
+      throw new ConflictException({
+        code: 'USER_ALREADY_IN_TENANT',
+        message: 'This user is already a member of this tenant',
+      });
+    }
 
     const existingInvite = await this.prisma.tenantInvitation.findFirst({
       where: {
@@ -101,13 +123,23 @@ export class TenantService {
       });
     }
 
+    // CRITICAL FIX: Validate role - prevent privilege escalation
+    const validRoles = ['USER', 'MANAGER'];
+    const requestedRole = dto.role ?? 'USER';
+    if (!validRoles.includes(requestedRole)) {
+      throw new BadRequestException({
+        code: 'INVALID_ROLE',
+        message: 'Cannot invite user with ADMIN role',
+      });
+    }
+
     const rawToken = crypto.randomUUID();
     const hashedToken = hashToken(rawToken);
     await this.prisma.tenantInvitation.create({
       data: {
         tenantId: admin.tenantId,
         email: dto.email,
-        role: (dto.role as any) ?? 'USER',
+        role: requestedRole as any,
         token: hashedToken,
         invitedBy: userId,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

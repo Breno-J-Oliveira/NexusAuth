@@ -195,12 +195,14 @@ export class TwoFactorService {
     return { message: '2FA disabled successfully' };
   }
 
-  async challenge(dto: Challenge2faDto, ipAddress?: string) {
+  async challenge(dto: Challenge2faDto, ipAddress?: string, userAgent?: string) {
+    // CRITICAL FIX: Rate limit by challenge token hash to prevent brute force
     const challengeKey = crypto.createHash('sha256').update(dto.challengeToken).digest('hex').slice(0, 16);
     await this.checkRateLimit(`2fa:challenge:${challengeKey}`, 5, 60);
-    // V5 fix: add per-IP rate limiting
+    
+    // CRITICAL FIX: Per-IP rate limiting with stricter limits
     if (ipAddress) {
-      await this.checkRateLimit(`2fa:challenge:ip:${ipAddress}`, 20, 60);
+      await this.checkRateLimit(`2fa:challenge:ip:${ipAddress}`, 10, 60);
     }
 
     let payload;
@@ -210,6 +212,15 @@ export class TwoFactorService {
       throw new UnauthorizedException({
         code: 'TOKEN_INVALID',
         message: 'Invalid or expired challenge token',
+      });
+    }
+    
+    // CRITICAL FIX: Check if challenge token has already been used (blacklisted)
+    const isBlacklisted = await this.redisService.exists(`blacklist:${payload.jti}`);
+    if (isBlacklisted) {
+      throw new UnauthorizedException({
+        code: 'TOKEN_ALREADY_USED',
+        message: 'Challenge token has already been used',
       });
     }
 
@@ -232,7 +243,7 @@ export class TwoFactorService {
 
     const isBackupCode = await this.consumeBackupCode(user.id, user.backupCodes, dto.code);
     if (!isBackupCode) {
-      // MEDIUM FIX: Prevent TOTP replay by checking last used code
+      // CRITICAL FIX: Prevent TOTP replay by checking last used code
       const lastCodeKey = `2fa:lastcode:${user.id}`;
       const lastCode = await this.redisService.get(lastCodeKey);
       if (lastCode === dto.code) {
@@ -257,19 +268,19 @@ export class TwoFactorService {
       await this.redisService.set(lastCodeKey, dto.code, 60);
     }
 
-    // MEDIUM FIX: Blacklist challenge token jti to prevent reuse
-    const challengePayload = this.jwtService.verifyChallenge(dto.challengeToken);
-    if (challengePayload.jti) {
+    // CRITICAL FIX: Blacklist challenge token jti IMMEDIATELY to prevent reuse
+    // This must happen BEFORE creating the session to prevent race conditions
+    if (payload.jti) {
       const ttl = 300; // 5 minutes (same as challenge token expiry)
-      await this.redisService.set(`blacklist:${challengePayload.jti}`, '1', ttl);
+      await this.redisService.set(`blacklist:${payload.jti}`, '1', ttl);
     }
 
     const session = await this.prisma.session.create({
       data: {
         userId: user.id,
         device: '2FA Challenge',
-        ipAddress: 'Unknown',
-        userAgent: 'Unknown',
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || 'Unknown',
       },
     });
 

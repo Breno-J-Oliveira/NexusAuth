@@ -27,11 +27,10 @@ import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { z } from 'zod';
 
-// B2 fix: add DTO for verify-email and magic-link/verify
 const verifyTokenSchema = z.object({
   token: z.string().uuid(),
 });
-const verifyTokenDto = z.infer<typeof verifyTokenSchema>;
+type verifyTokenDto = z.infer<typeof verifyTokenSchema>;
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -68,9 +67,7 @@ export class AuthController {
   ) {
     const userAgent = req.headers['user-agent'] || 'Unknown';
     const ipAddress = req.ip || 'Unknown';
-    // B4 fix: pass device name instead of userAgent twice
-    // Extract device name from userAgent (simplified)
-    const device = userAgent.includes('Chrome') ? 'Chrome' : 
+    const device = userAgent.includes('Chrome') ? 'Chrome' :
                   userAgent.includes('Firefox') ? 'Firefox' :
                   userAgent.includes('Safari') ? 'Safari' :
                   userAgent.includes('Edge') ? 'Edge' : 'Unknown Device';
@@ -128,16 +125,27 @@ export class AuthController {
   @Post('magic-link/verify')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verificar magic link token' })
-  async verifyMagicLink(@Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string }) {
-    return this.authService.verifyMagicLink(dto.token);
+  async verifyMagicLink(
+    @Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string },
+    @Req() req: Request,
+  ) {
+    // V40 FIX: pass ipAddress for rate limit
+    const ipAddress = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    return this.authService.verifyMagicLink(dto.token, ipAddress, userAgent);
   }
 
   @Public()
   @Post('verify-email')
   @HttpCode(200)
   @ApiOperation({ summary: 'Verificar email com token' })
-  async verifyEmail(@Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string }) {
-    return this.authService.verifyEmail(dto.token);
+  async verifyEmail(
+    @Body(new ZodValidationPipe(verifyTokenSchema)) dto: { token: string },
+    @Req() req: Request,
+  ) {
+    // V41 FIX: pass ipAddress for rate limit
+    const ipAddress = req.ip || 'unknown';
+    return this.authService.verifyEmail(dto.token, ipAddress);
   }
 
   @Post('logout')

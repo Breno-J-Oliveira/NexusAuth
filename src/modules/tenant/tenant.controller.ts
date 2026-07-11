@@ -37,7 +37,6 @@ export class TenantController {
     @Body() dto: CreateTenantDto,
     @Req() req: Request,
   ) {
-    // V11 fix: rate limit tenant creation
     const ipAddress = req.ip || 'unknown';
     const key = `ratelimit:tenant:${ipAddress}`;
     const count = await this.redisService.incr(key);
@@ -59,7 +58,19 @@ export class TenantController {
   async invite(
     @CurrentUser() user: any,
     @Body() dto: InviteTenantDto,
+    @Req() req: Request,
   ) {
+    // V11 fix: rate limit tenant invites
+    const ipAddress = req.ip || 'unknown';
+    const key = `ratelimit:tenant-invite:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) await this.redisService.expire(key, 300);
+    if (count > 10) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.tenantService.invite(user.sub, dto);
   }
 
@@ -69,7 +80,19 @@ export class TenantController {
   async acceptInvitation(
     @CurrentUser() user: any,
     @Body() dto: AcceptInvitationDto,
+    @Req() req: Request,
   ) {
+    // Rate limit invitation accept per IP to prevent brute force
+    const ipAddress = req.ip || 'unknown';
+    const key = `ratelimit:tenant-accept:${ipAddress}`;
+    const count = await this.redisService.incr(key);
+    if (count === 1) await this.redisService.expire(key, 60);
+    if (count > 10) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.tenantService.acceptInvitation(user.sub, dto);
   }
 

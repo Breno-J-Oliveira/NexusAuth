@@ -1,6 +1,8 @@
 import * as dns from 'dns';
 import * as net from 'net';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
+
+const logger = new Logger('SSRFGuard');
 
 const BLOCKED_RANGES = [
   '127.0.0.0/8',
@@ -14,6 +16,20 @@ const BLOCKED_RANGES = [
   'fc00::/7',
   'fe80::/10',
 ];
+
+// SECURITY: Block metadata service endpoints (cloud provider attack vector)
+const BLOCKED_HOSTNAMES = [
+  'metadata.google.internal',
+  '169.254.169.254', // AWS/GCP metadata
+  'metadata.azure.com',
+  '100.100.100.200', // Alibaba metadata
+];
+
+// SECURITY: Block dangerous protocols
+const ALLOWED_PROTOCOLS = ['http:', 'https:'];
+
+// SECURITY: Maximum URL length to prevent DoS
+const MAX_URL_LENGTH = 2048;
 
 function ipInCidr(ip: string, cidr: string): boolean {
   const [range, bits] = cidr.split('/');
@@ -60,26 +76,65 @@ function isBlockedIp(ip: string): boolean {
 }
 
 export async function validateWebhookUrl(urlStr: string): Promise<string> {
+  // SECURITY: Validate URL length
+  if (!urlStr || urlStr.length > MAX_URL_LENGTH) {
+    throw new BadRequestException({
+      code: 'INVALID_WEBHOOK_URL',
+      message: 'Webhook URL is too long or empty',
+    });
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(urlStr);
   } catch {
     throw new BadRequestException({
       code: 'INVALID_WEBHOOK_URL',
-      message: 'Invalid webhook URL',
+      message: 'Invalid webhook URL format',
     });
   }
 
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+  // SECURITY: Protocol validation
+  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+    logger.warn(`Blocked webhook with dangerous protocol: ${parsed.protocol}`);
     throw new BadRequestException({
       code: 'INVALID_WEBHOOK_URL',
       message: 'Webhook URL must use HTTP or HTTPS',
     });
   }
 
-  const hostname = parsed.hostname;
+  const hostname = parsed.hostname.toLowerCase();
+
+  // SECURITY: Block known metadata service hostnames
+  if (BLOCKED_HOSTNAMES.some(blocked => hostname === blocked || hostname.endsWith('.' + blocked))) {
+    logger.warn(`Blocked webhook to metadata service: ${hostname}`);
+    throw new BadRequestException({
+      code: 'SSRF_BLOCKED',
+      message: 'Webhook URL points to a blocked metadata service',
+    });
+  }
+
+  // SECURITY: Block URLs with credentials
+  if (parsed.username || parsed.password) {
+    logger.warn(`Blocked webhook with embedded credentials`);
+    throw new BadRequestException({
+      code: 'INVALID_WEBHOOK_URL',
+      message: 'Webhook URL must not contain credentials',
+    });
+  }
+
+  // SECURITY: Block URLs with non-standard ports (except 80, 443, 8080, 8443)
+  const port = parsed.port ? parseInt(parsed.port, 10) : null;
+  if (port && ![80, 443, 8080, 8443].includes(port)) {
+    logger.warn(`Blocked webhook with non-standard port: ${port}`);
+    throw new BadRequestException({
+      code: 'INVALID_WEBHOOK_URL',
+      message: 'Webhook URL must use standard ports (80, 443, 8080, 8443)',
+    });
+  }
 
   if (isBlockedIp(hostname)) {
+    logger.warn(`Blocked webhook to private IP: ${hostname}`);
     throw new BadRequestException({
       code: 'SSRF_BLOCKED',
       message: 'Webhook URL resolves to a blocked private/loopback address',
@@ -89,8 +144,18 @@ export async function validateWebhookUrl(urlStr: string): Promise<string> {
   let resolvedIp: string;
   try {
     const addresses = await dns.promises.lookup(hostname, { all: true });
+    
+    // SECURITY: Ensure at least one address resolved
+    if (!addresses || addresses.length === 0) {
+      throw new BadRequestException({
+        code: 'INVALID_WEBHOOK_URL',
+        message: 'Could not resolve webhook hostname',
+      });
+    }
+    
     for (const addr of addresses) {
       if (isBlockedIp(addr.address)) {
+        logger.warn(`Blocked webhook resolving to private IP: ${addr.address}`);
         throw new BadRequestException({
           code: 'SSRF_BLOCKED',
           message: `Webhook URL resolves to a blocked private/loopback address (${addr.address})`,
@@ -101,14 +166,19 @@ export async function validateWebhookUrl(urlStr: string): Promise<string> {
     resolvedIp = addresses[0].address;
   } catch (err: any) {
     if (err instanceof BadRequestException) throw err;
+    logger.warn(`DNS resolution failed for webhook: ${hostname}`);
     throw new BadRequestException({
       code: 'INVALID_WEBHOOK_URL',
-      message: `Could not resolve webhook hostname: ${err.message}`,
+      message: `Could not resolve webhook hostname`,
     });
   }
 
   // A5 fix: rewrite URL to use the resolved IP, preventing DNS rebinding TOCTOU
-  const port = parsed.port ? `:${parsed.port}` : '';
-  const pinnedUrl = `${parsed.protocol}//${resolvedIp}${port}${parsed.pathname}${parsed.search}`;
+  const portSuffix = parsed.port ? `:${parsed.port}` : '';
+  const pinnedUrl = `${parsed.protocol}//${resolvedIp}${portSuffix}${parsed.pathname}${parsed.search}`;
+  
+  // SECURITY: Log successful validation (without full URL for privacy)
+  logger.debug(`Webhook URL validated: ${parsed.protocol}//${hostname}/*`);
+  
   return pinnedUrl;
 }

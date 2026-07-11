@@ -32,11 +32,13 @@ export class HealthService {
       services: {
         database: {
           status: dbOk ? 'ok' : 'error',
-          ...(db.status === 'rejected' && { error: db.reason?.message }),
+          // SECURITY: Don't leak internal error messages to public endpoints
+          ...(db.status === 'rejected' && { error: 'Database connection failed' }),
         },
         redis: {
           status: redisOk ? 'ok' : 'error',
-          ...(redis.status === 'rejected' && { error: redis.reason?.message }),
+          // SECURITY: Don't leak internal error messages to public endpoints
+          ...(redis.status === 'rejected' && { error: 'Redis connection failed' }),
         },
       },
     };
@@ -57,11 +59,13 @@ export class HealthService {
       services: {
         database: {
           status: db.status === 'fulfilled' ? 'ok' : 'error',
-          ...(db.status === 'rejected' && { error: db.reason?.message }),
+          // SECURITY: Don't leak internal error messages to public endpoints
+          ...(db.status === 'rejected' && { error: 'Database connection failed' }),
         },
         redis: {
           status: redis.status === 'fulfilled' ? 'ok' : 'error',
-          ...(redis.status === 'rejected' && { error: redis.reason?.message }),
+          // SECURITY: Don't leak internal error messages to public endpoints
+          ...(redis.status === 'rejected' && { error: 'Redis connection failed' }),
         },
       },
     };

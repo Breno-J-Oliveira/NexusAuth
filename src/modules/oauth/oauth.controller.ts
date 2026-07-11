@@ -6,6 +6,7 @@ import {
   UseGuards,
   HttpException,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
@@ -29,7 +30,6 @@ export class OAuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    // V2 fix: rate limit OAuth callback per IP
     const ipAddress = req.ip || 'unknown';
     const key = `ratelimit:oauth:${ipAddress}`;
     const count = await this.redisService.incr(key);
@@ -40,7 +40,15 @@ export class OAuthController {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    const result = await this.oauthService.handleOAuthLogin(req.user as any);
+    // V45 FIX: validate that passport populated req.user
+    if (!req.user || !(req.user as any).providerId) {
+      throw new BadRequestException({
+        code: 'OAUTH_PROFILE_MISSING',
+        message: 'OAuth profile was not provided by the strategy',
+      });
+    }
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const result = await this.oauthService.handleOAuthLogin(req.user as any, ipAddress, userAgent);
     res.json(result);
   }
 
@@ -53,8 +61,8 @@ export class OAuthController {
   @Get('github/callback')
   @UseGuards(AuthGuard('github'))
   async githubCallback(@Req() req: Request, @Res() res: Response) {
-    // V2 fix: rate limit OAuth callback per IP
     const ipAddress = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'Unknown';
     const key = `ratelimit:oauth:${ipAddress}`;
     const count = await this.redisService.incr(key);
     if (count === 1) await this.redisService.expire(key, 60);
@@ -64,7 +72,14 @@ export class OAuthController {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    const result = await this.oauthService.handleOAuthLogin(req.user as any);
+    // V45 FIX: validate that passport populated req.user
+    if (!req.user || !(req.user as any).providerId) {
+      throw new BadRequestException({
+        code: 'OAUTH_PROFILE_MISSING',
+        message: 'OAuth profile was not provided by the strategy',
+      });
+    }
+    const result = await this.oauthService.handleOAuthLogin(req.user as any, ipAddress, userAgent);
     res.json(result);
   }
 }

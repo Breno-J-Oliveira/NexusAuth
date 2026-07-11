@@ -42,4 +42,12 @@ export const configuration = () => ({
   ),
 
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+
+  // V37 FIX: require email verification before allowing login
+  REQUIRE_EMAIL_VERIFIED: process.env.REQUIRE_EMAIL_VERIFIED ?? 'true',
+  // V50 FIX: session inactivity timeout
+  SESSION_INACTIVITY_HOURS: parseInt(
+    process.env.SESSION_INACTIVITY_HOURS ?? '24',
+    10,
+  ),
 });

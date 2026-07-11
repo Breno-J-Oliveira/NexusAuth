@@ -33,7 +33,6 @@ export class ApiKeysController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Criar API key (retorna chave completa apenas uma vez)' })
   async create(@CurrentUser() user: any, @Body() dto: CreateApiKeyDto, @Req() req: Request) {
-    // V11 fix: rate limit API key creation
     const ipAddress = req.ip || 'unknown';
     const key = `ratelimit:api-key:${ipAddress}`;
     const count = await this.redisService.incr(key);
@@ -68,7 +67,22 @@ export class ApiKeysController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Testar autenticação via API key' })
-  async test(@CurrentUser() user: any) {
+  async test(@CurrentUser() user: any, @Req() req: Request) {
+    // V49 FIX: rate limit API key test endpoint to prevent brute force
+    const ipAddress = req.ip || 'unknown';
+    const apiKeyHeader = (req.headers['x-api-key'] as string) || '';
+    const keyHash = apiKeyHeader.length > 0
+      ? require('crypto').createHash('sha256').update(apiKeyHeader).digest('hex').substring(0, 16)
+      : 'none';
+    const rlKey = `ratelimit:apikey-test:${ipAddress}:${keyHash}`;
+    const count = await this.redisService.incr(rlKey);
+    if (count === 1) await this.redisService.expire(rlKey, 60);
+    if (count > 10) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return {
       message: 'API key authentication successful',
       userId: user.sub,

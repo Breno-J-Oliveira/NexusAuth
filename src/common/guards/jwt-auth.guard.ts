@@ -3,18 +3,23 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { JwtService } from '../../modules/auth/jwt.service';
 import { RedisService } from '../../redis/redis.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+
   constructor(
     private reflector: Reflector,
     private jwtService: JwtService,
     private redisService: RedisService,
+    private prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -36,6 +41,15 @@ export class JwtAuthGuard implements CanActivate {
 
     const token = authHeader.substring(7);
 
+    // SECURITY: Validate token length to prevent DoS via huge tokens
+    if (token.length > 4096) {
+      this.logger.warn(`Token too long: ${token.length} chars from IP: ${request.ip}`);
+      throw new UnauthorizedException({
+        code: 'TOKEN_INVALID',
+        message: 'Invalid token format',
+      });
+    }
+
     try {
       const payload = await this.jwtService.verify(token);
 
@@ -56,10 +70,40 @@ export class JwtAuthGuard implements CanActivate {
         });
       }
 
+      // SECURITY: Validate session is still active (prevents use of tokens from revoked sessions)
+      if (payload.sessionId) {
+        const session = await this.prisma.session.findUnique({
+          where: { id: payload.sessionId },
+          select: { active: true },
+        });
+        
+        if (!session || !session.active) {
+          // Blacklist this token to prevent further attempts
+          const now = Math.floor(Date.now() / 1000);
+          const ttl = payload.exp - now;
+          if (ttl > 0) {
+            await this.redisService.set(`blacklist:${payload.jti}`, '1', ttl);
+          }
+          throw new UnauthorizedException({
+            code: 'SESSION_REVOKED',
+            message: 'Session has been revoked',
+          });
+        }
+      }
+
       request.user = payload;
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
+      
+      // SECURITY: Log authentication failures for security monitoring
+      this.logger.warn({
+        message: 'Authentication failed',
+        ip: request.ip,
+        path: request.path,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
       throw new UnauthorizedException({
         code: 'TOKEN_INVALID',
         message: 'Invalid or expired token',

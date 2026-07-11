@@ -21,7 +21,7 @@ export class OAuthService {
     private auditService: AuditService,
   ) {}
 
-  async handleOAuthLogin(profile: OAuthProfile) {
+  async handleOAuthLogin(profile: OAuthProfile, ipAddress?: string, userAgent?: string) {
     const providerIdField =
       profile.provider === 'google' ? 'googleId' : 'githubId';
 
@@ -75,16 +75,16 @@ export class OAuthService {
       return { requiresTwoFactor: true, challengeToken };
     }
 
-    return this.generateTokens(user.id, user.email, user.role, profile.provider, user.tenantId, user.permissions);
+    return this.generateTokens(user.id, user.email, user.role, profile.provider, user.tenantId, user.permissions, ipAddress, userAgent);
   }
 
-  private async generateTokens(userId: string, email: string, role: string, provider: string, tenantId?: string | null, permissions?: string[]) {
+  private async generateTokens(userId: string, email: string, role: string, provider: string, tenantId?: string | null, permissions?: string[], ipAddress?: string, userAgent?: string) {
     const session = await this.prisma.session.create({
       data: {
         userId,
-        device: 'OAuth2',
-        ipAddress: 'Unknown',
-        userAgent: 'Unknown',
+        device: `OAuth2 (${provider})`,
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || 'Unknown',
       },
     });
 

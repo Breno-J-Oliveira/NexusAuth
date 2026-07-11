@@ -59,6 +59,7 @@ export class TwoFactorController {
     @Req() req: Request,
   ) {
     const ipAddress = req.ip || 'unknown';
-    return this.twoFactorService.challenge(dto, ipAddress);
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    return this.twoFactorService.challenge(dto, ipAddress, userAgent);
   }
 }

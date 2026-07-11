@@ -1,6 +1,8 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,18 +17,61 @@ export class ApiKeysService {
   ) {}
 
   async create(userId: string, dto: CreateApiKeyDto) {
+    // CRITICAL FIX: Validate input
+    if (!dto.name || dto.name.trim().length === 0) {
+      throw new BadRequestException({
+        code: 'INVALID_NAME',
+        message: 'API key name is required',
+      });
+    }
+
     const rawKey = `nxs_live_${crypto.randomBytes(32).toString('hex')}`;
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      });
+    }
+
+    // CRITICAL FIX: Limit number of API keys per user to prevent abuse
+    const existingKeysCount = await this.prisma.apiKey.count({
+      where: { userId, active: true },
+    });
+    const MAX_API_KEYS = 10;
+    if (existingKeysCount >= MAX_API_KEYS) {
+      throw new BadRequestException({
+        code: 'API_KEY_LIMIT_REACHED',
+        message: `Maximum of ${MAX_API_KEYS} active API keys allowed`,
+      });
+    }
 
     // A2 fix: filter requested permissions against user's actual permissions
+    // CRITICAL FIX: Admin users can have any permission, regular users are restricted
     const userPermissions = user?.permissions ?? [];
-    const allowedPermissions = dto.permissions.filter((p) => userPermissions.includes(p));
+    let allowedPermissions: string[];
+    
+    if (user.role === 'ADMIN') {
+      // Admins can create API keys with any permissions
+      allowedPermissions = dto.permissions;
+    } else {
+      // Regular users can only create API keys with permissions they have
+      allowedPermissions = dto.permissions.filter((p) => userPermissions.includes(p));
+      
+      // CRITICAL FIX: Prevent privilege escalation - reject if requesting permissions user doesn't have
+      if (allowedPermissions.length !== dto.permissions.length) {
+        throw new ForbiddenException({
+          code: 'INSUFFICIENT_PERMISSIONS',
+          message: 'Cannot create API key with permissions you do not have',
+        });
+      }
+    }
 
     const apiKey = await this.prisma.apiKey.create({
       data: {
-        name: dto.name,
+        name: dto.name.trim(),
         key: keyHash,
         userId,
         tenantId: user?.tenantId ?? null,

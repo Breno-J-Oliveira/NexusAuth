@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
@@ -10,6 +10,7 @@ export class JwtService {
   private publicKey: string;
   private accessExpiresIn: string;
   private issuer: string;
+  private readonly logger = new Logger(JwtService.name);
 
   constructor(private configService: ConfigService) {
     const privateKeyPath = this.configService.get<string>(
@@ -20,13 +21,39 @@ export class JwtService {
       'JWT_PUBLIC_KEY_PATH',
       './keys/public.pem',
     );
-    this.privateKey = fs.readFileSync(privateKeyPath, 'utf8');
-    this.publicKey = fs.readFileSync(publicKeyPath, 'utf8');
     this.accessExpiresIn = this.configService.get<string>(
       'JWT_ACCESS_EXPIRES_IN',
       '15m',
     );
     this.issuer = this.configService.get<string>('JWT_ISSUER', 'nexusauth');
+
+    // V48 FIX: load keys with graceful failure
+    try {
+      this.privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+      this.publicKey = fs.readFileSync(publicKeyPath, 'utf8');
+
+      if (!this.privateKey.includes('BEGIN') || !this.publicKey.includes('BEGIN')) {
+        throw new Error(`Invalid PEM key file at ${privateKeyPath} or ${publicKeyPath}`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to load JWT keys: ${err.message}`);
+      this.logger.error('In production, RS256 keys MUST be mounted via secret/volume.');
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+          `JWT keys missing or invalid. Mount persistent keys at ${privateKeyPath} and ${publicKeyPath}. ` +
+          `Do NOT use ephemeral key generation in production.`,
+        );
+      }
+      // In dev/test, generate ephemeral keys to keep startup alive
+      this.logger.warn('Generating ephemeral RSA key pair for development. This must NEVER happen in production.');
+      const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      this.privateKey = privateKey;
+      this.publicKey = publicKey;
+    }
   }
 
   signAccessToken(payload: {
@@ -38,14 +65,17 @@ export class JwtService {
     sessionId?: string;
   }): string {
     const jti = crypto.randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+
     return jwt.sign(
-      { ...payload, jti, type: 'access' },
+      { ...payload, jti, type: 'access', iat },
       this.privateKey,
       {
         algorithm: 'RS256',
         expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
         keyid: 'nexusauth-1',
+        notBefore: 0,
       },
     );
   }
@@ -59,14 +89,17 @@ export class JwtService {
     impersonatedBy: string;
   }): string {
     const jti = crypto.randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+
     return jwt.sign(
-      { ...payload, jti, type: 'impersonation' },
+      { ...payload, jti, type: 'impersonation', iat },
       this.privateKey,
       {
         algorithm: 'RS256',
         expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
         keyid: 'nexusauth-1',
+        notBefore: 0,
       },
     );
   }
@@ -77,14 +110,17 @@ export class JwtService {
     role: string;
   }): string {
     const jti = crypto.randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+
     return jwt.sign(
-      { ...payload, jti, type: '2fa-challenge' },
+      { ...payload, jti, type: '2fa-challenge', iat },
       this.privateKey,
       {
         algorithm: 'RS256',
         expiresIn: '5m',
         issuer: this.issuer,
         keyid: 'nexusauth-1',
+        notBefore: 0,
       },
     );
   }
@@ -98,17 +134,31 @@ export class JwtService {
     tenantId?: string;
     permissions?: string[];
     impersonatedBy?: string;
+    sessionId?: string;
     exp: number;
     iat: number;
     iss: string;
   } {
-    return jwt.verify(token, this.publicKey, {
+    if (!token || typeof token !== 'string') {
+      throw new jwt.JsonWebTokenError('Token must be a non-empty string');
+    }
+    if (token.includes('\n') || token.includes('\r') || token.includes('\0')) {
+      throw new jwt.JsonWebTokenError('Invalid token format');
+    }
+
+    const decoded = jwt.verify(token, this.publicKey, {
       algorithms: ['RS256'],
       issuer: this.issuer,
+      maxAge: this.accessExpiresIn,
+      ignoreExpiration: false,
     }) as any;
-  }
 
-  // B2 fix: expose sessionId from payload for logoutAll keepCurrent
+    if (!decoded.sub || !decoded.jti || !decoded.type) {
+      throw new jwt.JsonWebTokenError('Missing required token claims');
+    }
+
+    return decoded;
+  }
 
   verifyChallenge(token: string): {
     sub: string;

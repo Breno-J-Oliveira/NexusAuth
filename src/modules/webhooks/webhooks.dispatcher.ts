@@ -10,6 +10,17 @@ interface WebhookPayload {
   data: Record<string, any>;
 }
 
+// V57 FIX: helper to mask secrets in URLs before logging
+function redactUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    // Remove query string entirely; show only host and pathname
+    return `${u.protocol}//${u.host}${u.pathname}`;
+  } catch {
+    return '[invalid-url]';
+  }
+}
+
 @Injectable()
 export class WebhooksDispatcher {
   private readonly logger = new Logger(WebhooksDispatcher.name);
@@ -59,13 +70,33 @@ export class WebhooksDispatcher {
     try {
       pinnedUrl = await validateWebhookUrl(url);
     } catch (err: any) {
-      this.logger.error(`Webhook ${webhookId} URL blocked by SSRF guard: ${err.message?.message ?? err.message}`);
+      // V57 FIX: do NOT log the URL (it may contain query-string tokens); log only that validation failed
+      const logMessage = err instanceof Error ? err.message : 'Unknown SSRF validation error';
+      this.logger.error(`Webhook ${webhookId} URL blocked by SSRF guard: ${logMessage}`);
+
+      await this.prisma.webhookDelivery.create({
+        data: {
+          webhookId,
+          event: payload.event,
+          payload: body as any,
+          statusCode: null,
+          attempt: 1,
+          success: false,
+          errorMessage: 'URL validation failed',
+        },
+      });
+
       this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
       return;
     }
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       const result = await this.deliver(pinnedUrl, body, signature, payload.event, attempt, url);
+
+      // V57 FIX: sanitize error messages before storing - do not leak DNS/network/internal details
+      const sanitizedError = result.error
+        ? (result.error.includes('fetch') ? 'Connection failed' : result.error.length > 200 ? result.error.substring(0, 200) : result.error)
+        : undefined;
 
       await this.prisma.webhookDelivery.create({
         data: {
@@ -75,7 +106,7 @@ export class WebhooksDispatcher {
           statusCode: result.statusCode,
           attempt,
           success: result.success,
-          errorMessage: result.error,
+          errorMessage: sanitizedError,
         },
       });
 
@@ -87,9 +118,8 @@ export class WebhooksDispatcher {
 
       if (attempt < this.maxAttempts) {
         const delay = this.backoffMs[attempt - 1];
-        this.logger.warn(
-          `Webhook ${webhookId} attempt ${attempt} failed (${result.error}), retrying in ${delay}ms`,
-        );
+        // V57 FIX: do not log the URL or the error details
+        this.logger.warn(`Webhook ${webhookId} attempt ${attempt} failed, retrying in ${delay}ms`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         this.logger.error(
@@ -112,7 +142,14 @@ export class WebhooksDispatcher {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      const parsed = new URL(originalUrl);
+      let hostHeader = '';
+      try {
+        const parsed = new URL(originalUrl);
+        hostHeader = parsed.host;
+      } catch {
+        hostHeader = '';
+      }
+
       const res = await fetch(pinnedUrl, {
         method: 'POST',
         redirect: 'manual',
@@ -120,7 +157,7 @@ export class WebhooksDispatcher {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
           'X-Webhook-Event': eventName,
-          'Host': parsed.host,
+          ...(hostHeader ? { 'Host': hostHeader } : {}),
         },
         body,
         signal: controller.signal,
@@ -134,7 +171,14 @@ export class WebhooksDispatcher {
 
       return { success: false, statusCode: res.status, error: `HTTP ${res.status}` };
     } catch (err: any) {
-      return { success: false, error: err.message };
+      // V57 FIX: never echo raw error.message - it can contain DNS details, IPs, etc.
+      const sanitizedError = err.name === 'AbortError'
+        ? 'Request timeout'
+        : err.name === 'TypeError'
+        ? 'Network error'
+        : 'Delivery failed';
+
+      return { success: false, error: sanitizedError };
     }
   }
 }

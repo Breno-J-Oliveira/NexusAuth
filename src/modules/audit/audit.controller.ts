@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Query,
+  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -32,19 +33,49 @@ export class AuditController {
 
     const where: any = {};
 
-    // C1 fix: filter by tenantId to prevent cross-tenant data leakage
-    // If user has no tenantId (global admin), they can see all logs
-    // If user has tenantId, they can only see logs of users in their tenant
+    // C1 fix + V38 fix: filter by tenantId to prevent cross-tenant data leakage.
+    // When user has a tenantId, restrict to logs whose user belongs to that tenant.
+    // Anonymous logs (userId null) are not shown to tenant-scoped admins.
     if (user.tenantId) {
       where.user = { tenantId: user.tenantId };
     }
 
-    if (userId) where.userId = userId;
+    if (userId) {
+      // V52 fix: validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        throw new BadRequestException({
+          code: 'INVALID_USER_ID',
+          message: 'userId must be a valid UUID',
+        });
+      }
+      where.userId = userId;
+    }
     if (action) where.action = action;
+
+    // V52 FIX: validate date filter inputs to prevent DoS via Invalid Date
     if (startDate || endDate) {
       where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
+      if (startDate) {
+        const sd = new Date(startDate);
+        if (isNaN(sd.getTime())) {
+          throw new BadRequestException({
+            code: 'INVALID_DATE',
+            message: 'startDate is not a valid date',
+          });
+        }
+        where.createdAt.gte = sd;
+      }
+      if (endDate) {
+        const ed = new Date(endDate);
+        if (isNaN(ed.getTime())) {
+          throw new BadRequestException({
+            code: 'INVALID_DATE',
+            message: 'endDate is not a valid date',
+          });
+        }
+        where.createdAt.lte = ed;
+      }
     }
 
     const [items, total] = await Promise.all([

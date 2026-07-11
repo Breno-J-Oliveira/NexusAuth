@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { configuration } from './config/configuration';
@@ -17,9 +17,12 @@ import { AdminModule } from './modules/admin/admin.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { LgpdModule } from './modules/lgpd/lgpd.module';
+import { ThreatIntelModule } from './modules/threat-intel/threat-intel.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { JwtService } from './modules/auth/jwt.service';
 import { RedisService } from './redis/redis.service';
+import { PrismaService } from './prisma/prisma.service';
 import { Reflector } from '@nestjs/core';
 
 @Module({
@@ -31,6 +34,7 @@ import { Reflector } from '@nestjs/core';
     }),
     PrismaModule,
     RedisModule,
+    ThreatIntelModule,
     HealthModule,
     AuthModule,
     JwksModule,
@@ -43,14 +47,14 @@ import { Reflector } from '@nestjs/core';
     WebhooksModule,
     ApiKeysModule,
     MetricsModule,
+    LgpdModule,
   ],
-  // A4 fix: Register JwtAuthGuard as global guard — secure by default, @Public() is the exception
   providers: [
     {
       provide: APP_GUARD,
-      useFactory: (reflector: Reflector, jwtService: JwtService, redisService: RedisService) =>
-        new JwtAuthGuard(reflector, jwtService, redisService),
-      inject: [Reflector, JwtService, RedisService],
+      useFactory: (reflector: Reflector, jwtService: JwtService, redisService: RedisService, prismaService: PrismaService) =>
+        new JwtAuthGuard(reflector, jwtService, redisService, prismaService),
+      inject: [Reflector, JwtService, RedisService, PrismaService],
     },
   ],
 })

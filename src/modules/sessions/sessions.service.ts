@@ -1,15 +1,36 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class SessionsService {
+  // SECURITY: UUID validation regex
+  private readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
   ) {}
 
+  // SECURITY: Validate UUID format
+  private validateUUID(id: string, fieldName: string = 'ID'): void {
+    if (!id || typeof id !== 'string') {
+      throw new BadRequestException({
+        code: 'INVALID_FORMAT',
+        message: `${fieldName} must be a non-empty string`,
+      });
+    }
+    if (!this.UUID_REGEX.test(id)) {
+      throw new BadRequestException({
+        code: 'INVALID_FORMAT',
+        message: `${fieldName} must be a valid UUID`,
+      });
+    }
+  }
+
   async listSessions(userId: string) {
+    this.validateUUID(userId, 'userId');
+    
     const sessions = await this.prisma.session.findMany({
       where: { userId, active: true },
       orderBy: { lastActiveAt: 'desc' },
@@ -29,6 +50,9 @@ export class SessionsService {
   }
 
   async revokeSession(userId: string, sessionId: string) {
+    this.validateUUID(userId, 'userId');
+    this.validateUUID(sessionId, 'sessionId');
+
     const session = await this.prisma.session.findFirst({
       where: { id: sessionId, userId },
     });
@@ -60,8 +84,11 @@ export class SessionsService {
   }
 
   async logoutAll(userId: string, currentSessionId?: string) {
+    this.validateUUID(userId, 'userId');
+    
     const where: any = { userId, active: true };
     if (currentSessionId) {
+      this.validateUUID(currentSessionId, 'currentSessionId');
       where.id = { not: currentSessionId };
     }
 
