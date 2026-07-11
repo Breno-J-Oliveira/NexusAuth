@@ -2,23 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
-import { validateWebhookUrl } from '../../common/utils/ssrf-guard';
+import { resolveAndValidateIp, validateWebhookUrl } from '../../common/utils/ssrf-guard';
 
 interface WebhookPayload {
   event: string;
   timestamp: string;
   data: Record<string, any>;
-}
-
-// V57 FIX: helper to mask secrets in URLs before logging
-function redactUrl(rawUrl: string): string {
-  try {
-    const u = new URL(rawUrl);
-    // Remove query string entirely; show only host and pathname
-    return `${u.protocol}//${u.host}${u.pathname}`;
-  } catch {
-    return '[invalid-url]';
-  }
 }
 
 @Injectable()
@@ -50,6 +39,26 @@ export class WebhooksDispatcher {
     };
 
     for (const webhook of webhooks) {
+      // Validate URL at dispatch time too (cheap protection-in-depth)
+      try {
+        await validateWebhookUrl(webhook.url);
+      } catch (err: any) {
+        const logMessage = err instanceof Error ? err.message : 'Unknown SSRF validation error';
+        this.logger.error(`Webhook ${webhook.id} URL blocked by SSRF guard: ${logMessage}`);
+        await this.prisma.webhookDelivery.create({
+          data: {
+            webhookId: webhook.id,
+            event: payload.event,
+            payload: JSON.stringify(payload) as any,
+            statusCode: null,
+            attempt: 1,
+            success: false,
+            errorMessage: 'URL validation failed',
+          },
+        });
+        this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
+        continue;
+      }
       setImmediate(() => this.deliverWithRetry(webhook.id, webhook.url, webhook.secret, payload));
     }
   }
@@ -66,36 +75,35 @@ export class WebhooksDispatcher {
       .update(body)
       .digest('hex');
 
-    let pinnedUrl: string;
-    try {
-      pinnedUrl = await validateWebhookUrl(url);
-    } catch (err: any) {
-      // V57 FIX: do NOT log the URL (it may contain query-string tokens); log only that validation failed
-      const logMessage = err instanceof Error ? err.message : 'Unknown SSRF validation error';
-      this.logger.error(`Webhook ${webhookId} URL blocked by SSRF guard: ${logMessage}`);
-
-      await this.prisma.webhookDelivery.create({
-        data: {
-          webhookId,
-          event: payload.event,
-          payload: body as any,
-          statusCode: null,
-          attempt: 1,
-          success: false,
-          errorMessage: 'URL validation failed',
-        },
-      });
-
-      this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
-      return;
-    }
-
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
-      const result = await this.deliver(pinnedUrl, body, signature, payload.event, attempt, url);
+      // Re-validate IP immediately before the fetch to close the
+      // TOCTOU window between webhook creation and delivery.
+      // We do NOT pin the IP — instead we let the platform resolver
+      // do its job so TLS/SNI continues to work.
+      try {
+        await resolveAndValidateIp(url);
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : 'unknown';
+        this.logger.error(`Webhook ${webhookId} pre-flight IP check failed: ${msg}`);
+        await this.prisma.webhookDelivery.create({
+          data: {
+            webhookId,
+            event: payload.event,
+            payload: body as any,
+            statusCode: null,
+            attempt,
+            success: false,
+            errorMessage: 'IP validation failed before delivery',
+          },
+        });
+        this.metricsService.webhooksDispatchedTotal.inc({ status: 'failed' });
+        return;
+      }
 
-      // V57 FIX: sanitize error messages before storing - do not leak DNS/network/internal details
+      const result = await this.deliver(url, body, signature, payload.event, attempt);
+
       const sanitizedError = result.error
-        ? (result.error.includes('fetch') ? 'Connection failed' : result.error.length > 200 ? result.error.substring(0, 200) : result.error)
+        ? (result.error.includes('fetch') ? 'Connection failed' : result.error.length > 500 ? result.error.substring(0, 500) : result.error)
         : undefined;
 
       await this.prisma.webhookDelivery.create({
@@ -118,8 +126,9 @@ export class WebhooksDispatcher {
 
       if (attempt < this.maxAttempts) {
         const delay = this.backoffMs[attempt - 1];
-        // V57 FIX: do not log the URL or the error details
-        this.logger.warn(`Webhook ${webhookId} attempt ${attempt} failed, retrying in ${delay}ms`);
+        this.logger.warn(
+          `Webhook ${webhookId} attempt ${attempt} failed (${result.error}), retrying in ${delay}ms`,
+        );
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         this.logger.error(
@@ -131,33 +140,28 @@ export class WebhooksDispatcher {
   }
 
   private async deliver(
-    pinnedUrl: string,
+    url: string,
     body: string,
     signature: string,
     eventName: string,
     attempt: number,
-    originalUrl: string,
   ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      let hostHeader = '';
-      try {
-        const parsed = new URL(originalUrl);
-        hostHeader = parsed.host;
-      } catch {
-        hostHeader = '';
-      }
-
-      const res = await fetch(pinnedUrl, {
+      // Use the original URL — do NOT pin to an IP. TLS/SNI handles
+      // certificate validation against the hostname, and pinning
+      // would cause certificate hostname mismatches.
+      const parsed = new URL(url);
+      const res = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
         headers: {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
           'X-Webhook-Event': eventName,
-          ...(hostHeader ? { 'Host': hostHeader } : {}),
+          'Host': parsed.host,
         },
         body,
         signal: controller.signal,
@@ -171,12 +175,13 @@ export class WebhooksDispatcher {
 
       return { success: false, statusCode: res.status, error: `HTTP ${res.status}` };
     } catch (err: any) {
-      // V57 FIX: never echo raw error.message - it can contain DNS details, IPs, etc.
       const sanitizedError = err.name === 'AbortError'
         ? 'Request timeout'
         : err.name === 'TypeError'
         ? 'Network error'
-        : 'Delivery failed';
+        : err.message && err.message.length > 200
+        ? err.message.substring(0, 200)
+        : err.message || 'Unknown error';
 
       return { success: false, error: sanitizedError };
     }

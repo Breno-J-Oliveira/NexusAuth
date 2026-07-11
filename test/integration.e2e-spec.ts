@@ -1,12 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+﻿import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { RedisService } from '../src/redis/redis.service';
+import { configureApp } from '../src/app.config';
 
 jest.setTimeout(30000);
 
-describe('Integration: register → login → protected route → logout', () => {
+describe('Integration: register â†’ login â†’ protected route â†’ logout', () => {
   let app: INestApplication;
   const testEmail = `e2e-integration-${Date.now()}@test.com`;
   const testPassword = 'Str0ng!Pass1';
@@ -19,6 +20,7 @@ describe('Integration: register → login → protected route → logout', () =>
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
 
     const redis = app.get(RedisService);

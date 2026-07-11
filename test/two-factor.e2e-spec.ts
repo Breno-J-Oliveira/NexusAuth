@@ -1,9 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
+﻿import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { authenticator } from 'otplib';
 import { RedisService } from '../src/redis/redis.service';
+import { configureApp } from '../src/app.config';
 
 jest.setTimeout(30000);
 
@@ -21,6 +22,7 @@ describe('2FA E2E', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
 
     const redis = app.get(RedisService);

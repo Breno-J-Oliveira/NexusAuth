@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { configuration } from './config/configuration';
@@ -23,6 +23,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { JwtService } from './modules/auth/jwt.service';
 import { RedisService } from './redis/redis.service';
 import { PrismaService } from './prisma/prisma.service';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { Reflector } from '@nestjs/core';
 
 @Module({
@@ -50,6 +52,8 @@ import { Reflector } from '@nestjs/core';
     LgpdModule,
   ],
   providers: [
+    IdempotencyInterceptor,
+    SecurityHeadersMiddleware,
     {
       provide: APP_GUARD,
       useFactory: (reflector: Reflector, jwtService: JwtService, redisService: RedisService, prismaService: PrismaService) =>

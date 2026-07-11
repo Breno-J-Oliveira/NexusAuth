@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   UnauthorizedException,
   NotFoundException,
@@ -330,7 +330,7 @@ export class AuthService {
     });
     if (result.count === 0) {
       const reset = await this.prisma.passwordReset.findUnique({ where: { token: hashedToken } });
-      if (!reset) throw new BadRequestException({ code: 'INVALID_RESET_TOKEN    if (!reset) throw new BadRequestException({ code: 'INVALID_RESET_TOKEN', message: 'Invalid or expired reset token' });
+      if (!reset) throw new BadRequestException({ code: 'INVALID_RESET_TOKEN', message: 'Invalid or expired reset token' });
       if (reset.used) throw new BadRequestException({ code: 'RESET_TOKEN_ALREADY_USED', message: 'Reset token has already been used' });
       throw new BadRequestException({ code: 'RESET_TOKEN_EXPIRED', message: 'Reset token has expired' });
     }

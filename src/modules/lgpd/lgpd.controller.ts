@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Delete,
@@ -11,7 +11,6 @@ import { LgpdService } from './lgpd.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('LGPD/GDPR')
 @Controller('me/data')
