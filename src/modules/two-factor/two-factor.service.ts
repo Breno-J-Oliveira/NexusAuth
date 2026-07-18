@@ -352,9 +352,24 @@ export class TwoFactorService {
     backupCodes: string[],
     code: string,
   ): Promise<boolean> {
+    // A6 FIX: Progressive lockout for backup codes.
+    // Prevent brute force of 2FA backup codes through rate limiting.
+    const lockKey = `2fa:backup:attempts:${userId}`;
+    const attempts = await this.redisService.incr(lockKey);
+    if (attempts === 1) await this.redisService.expire(lockKey, 60);
+    if (attempts > 5) {
+      throw new HttpException(
+        { code: 'RATE_LIMITED', message: 'Too many backup code attempts. Please try again later.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     for (let i = 0; i < backupCodes.length; i++) {
       const matches = await bcrypt.compare(code, backupCodes[i]);
       if (matches) {
+        // A6 FIX: Reset counter on successful backup code consumption
+        await this.redisService.del(lockKey);
+
         // C4 fix: atomic update — only remove the code if it's still present (prevents race condition)
         const result = await this.prisma.user.updateMany({
           where: {
@@ -366,7 +381,6 @@ export class TwoFactorService {
           },
         });
         if (result.count === 0) {
-          // Code was already consumed by a concurrent request
           return false;
         }
         return true;

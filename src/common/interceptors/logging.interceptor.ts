@@ -30,6 +30,32 @@ const SENSITIVE_PARAMS = [
   'authorization',
 ];
 
+// A9 FIX: Sensitive body fields that must be redacted before logging.
+// These carry authentication tokens and secrets in request bodies.
+const SENSITIVE_BODY_FIELDS = new Set([
+  'password', 'currentPassword', 'newPassword', 'confirmPassword',
+  'refreshToken', 'challengeToken', 'token',
+  'secret', 'code', 'key', 'apiKey', 'api_key',
+  'authorization', 'accessToken', 'access_token',
+]);
+
+function sanitizeBody(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  if (Array.isArray(body)) return body.map(sanitizeBody);
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    if (SENSITIVE_BODY_FIELDS.has(key)) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeBody(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 function sanitizeUrl(rawUrl: string): string {
   try {
     const url = new URL(rawUrl, 'http://placeholder.local');
@@ -65,6 +91,8 @@ export class LoggingInterceptor implements NestInterceptor {
     const startTime = Date.now();
     // V44 FIX: never log raw URL with sensitive query parameters
     const safePath = sanitizeUrl(req.originalUrl || req.url || '');
+    // A9 FIX: sanitize request body to redact sensitive fields (passwords, tokens, secrets)
+    const safeBody = sanitizeBody((req as any).body);
 
     return next.handle().pipe(
       tap({
@@ -76,6 +104,7 @@ export class LoggingInterceptor implements NestInterceptor {
             path: safePath,
             statusCode: res.statusCode,
             durationMs: duration,
+            body: safeBody,
           });
         },
         error: (err) => {
@@ -87,6 +116,7 @@ export class LoggingInterceptor implements NestInterceptor {
             statusCode: err.status || 500,
             durationMs: duration,
             error: err.message,
+            body: safeBody,
           });
         },
       }),

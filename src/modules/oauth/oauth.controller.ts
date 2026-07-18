@@ -40,6 +40,26 @@ export class OAuthController {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+
+    // A5 FIX: Validate CSRF state parameter to prevent OAuth account hijacking.
+    // The state is set by the frontend before redirecting to Google and stored in Redis.
+    const state = req.query.state as string;
+    if (!state) {
+      throw new BadRequestException({
+        code: 'OAUTH_MISSING_STATE',
+        message: 'Missing OAuth state parameter. CSRF protection required.',
+      });
+    }
+    const stateValid = await this.redisService.exists(`oauth:state:${state}`);
+    if (!stateValid) {
+      throw new BadRequestException({
+        code: 'OAUTH_INVALID_STATE',
+        message: 'Invalid or expired OAuth state parameter.',
+      });
+    }
+    // Clear state from Redis to prevent replay
+    await this.redisService.del(`oauth:state:${state}`);
+
     // V45 FIX: validate that passport populated req.user
     if (!req.user || !(req.user as any).providerId) {
       throw new BadRequestException({
@@ -72,6 +92,24 @@ export class OAuthController {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+
+    // A5 FIX: Validate CSRF state parameter to prevent OAuth account hijacking.
+    const state = req.query.state as string;
+    if (!state) {
+      throw new BadRequestException({
+        code: 'OAUTH_MISSING_STATE',
+        message: 'Missing OAuth state parameter. CSRF protection required.',
+      });
+    }
+    const stateValid = await this.redisService.exists(`oauth:state:${state}`);
+    if (!stateValid) {
+      throw new BadRequestException({
+        code: 'OAUTH_INVALID_STATE',
+        message: 'Invalid or expired OAuth state parameter.',
+      });
+    }
+    await this.redisService.del(`oauth:state:${state}`);
+
     // V45 FIX: validate that passport populated req.user
     if (!req.user || !(req.user as any).providerId) {
       throw new BadRequestException({
