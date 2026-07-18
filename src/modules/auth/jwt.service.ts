@@ -149,7 +149,6 @@ export class JwtService {
     const decoded = jwt.verify(token, this.publicKey, {
       algorithms: ['RS256'],
       issuer: this.issuer,
-      maxAge: this.accessExpiresIn,
       ignoreExpiration: false,
     }) as any;
 

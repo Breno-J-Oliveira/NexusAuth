@@ -150,10 +150,6 @@ export class WebhooksDispatcher {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      // Use the original URL — do NOT pin to an IP. TLS/SNI handles
-      // certificate validation against the hostname, and pinning
-      // would cause certificate hostname mismatches.
-      const parsed = new URL(url);
       const res = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
@@ -161,7 +157,6 @@ export class WebhooksDispatcher {
           'Content-Type': 'application/json',
           'X-Webhook-Signature': signature,
           'X-Webhook-Event': eventName,
-          'Host': parsed.host,
         },
         body,
         signal: controller.signal,
@@ -169,11 +164,24 @@ export class WebhooksDispatcher {
 
       clearTimeout(timeout);
 
+      // SECURITY: Always consume the response body to prevent memory leaks
+      // and to allow connection reuse in Node.js keep-alive.
+      let responseText = '';
+      try {
+        responseText = await res.text();
+      } catch {
+        // Ignore body read errors — the status code is what matters
+      }
+
       if (res.status >= 200 && res.status < 300) {
         return { success: true, statusCode: res.status };
       }
 
-      return { success: false, statusCode: res.status, error: `HTTP ${res.status}` };
+      // SECURITY: Truncate response body in error logs to prevent log injection
+      const truncatedBody = responseText.length > 500
+        ? responseText.substring(0, 500) + '...'
+        : responseText;
+      return { success: false, statusCode: res.status, error: `HTTP ${res.status}: ${truncatedBody}` };
     } catch (err: any) {
       const sanitizedError = err.name === 'AbortError'
         ? 'Request timeout'

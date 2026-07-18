@@ -74,6 +74,31 @@ services:
     networks:
       - nexus-net
 
+  jest-runner:
+    build:
+      context: .
+      dockerfile: docker/jest-runner/Dockerfile
+    container_name: nexus-jest-runner
+    restart: "no"
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://nexus:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/nexusauth
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379
+      TRUST_PROXY_HOPS: 0
+      JWT_ISSUER: nexusauth
+      REQUIRE_EMAIL_VERIFIED: 'false'
+      REQUEST_BODY_LIMIT: 100kb
+      JWT_PRIVATE_KEY_PATH: ./keys/private.pem
+      JWT_PUBLIC_KEY_PATH: ./keys/public.pem
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nexus-net
+
+
 volumes:
   postgres_data:
   redis_data:

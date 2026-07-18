@@ -20,6 +20,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { LgpdModule } from './modules/lgpd/lgpd.module';
 import { ThreatIntelModule } from './modules/threat-intel/threat-intel.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { ThrottlerGuard } from './common/guards/throttler.guard';
 import { JwtService } from './modules/auth/jwt.service';
 import { RedisService } from './redis/redis.service';
 import { PrismaService } from './prisma/prisma.service';
@@ -59,6 +60,11 @@ import { Reflector } from '@nestjs/core';
       useFactory: (reflector: Reflector, jwtService: JwtService, redisService: RedisService, prismaService: PrismaService) =>
         new JwtAuthGuard(reflector, jwtService, redisService, prismaService),
       inject: [Reflector, JwtService, RedisService, PrismaService],
+    },
+    {
+      provide: APP_GUARD,
+      useFactory: (redisService: RedisService) => new ThrottlerGuard(redisService),
+      inject: [RedisService],
     },
   ],
 })

@@ -74,6 +74,49 @@ describe('Auth E2E', () => {
       refreshToken = res.body.refreshToken;
     });
 
+    it('should return 409 IDEMPOTENCY_KEY_CONFLICT when same Idempotency-Key but different bodies are sent', async () => {
+      const idemKey = `idem-${Date.now()}-login-conflict-1`;
+
+      const first = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('Idempotency-Key', idemKey)
+        .send({ email: testEmail, password: testPassword })
+        .expect(200);
+
+      expect(first.body).toHaveProperty('accessToken');
+
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('Idempotency-Key', idemKey)
+        .send({ email: testEmail, password: 'WrongPassword123!' })
+        .expect(409)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('code', 'IDEMPOTENCY_KEY_CONFLICT');
+        });
+    });
+
+    it('should replay cached response when same Idempotency-Key and identical body are sent', async () => {
+      const idemKey = `idem-${Date.now()}-login-replay-1`;
+
+      const first = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('Idempotency-Key', idemKey)
+        .send({ email: testEmail, password: testPassword })
+        .expect(200);
+
+      expect(first.headers['idempotent-replay']).toBeUndefined();
+
+      const second = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('Idempotency-Key', idemKey)
+        .send({ email: testEmail, password: testPassword })
+        .expect(200);
+
+      expect(second.headers['idempotent-replay']).toBe('true');
+      expect(second.body).toHaveProperty('accessToken');
+      expect(second.body).toHaveProperty('refreshToken');
+    });
+
     it('should reject invalid password', async () => {
       await request(app.getHttpServer())
         .post('/auth/login')

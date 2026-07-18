@@ -101,9 +101,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
           statusCode,
           code,
           message: exception.message,
-          stack: exception.stack,
           path: request.url,
           method: request.method,
+          stack: process.env.NODE_ENV !== 'production' ? exception.stack : undefined,
         }),
       );
     }

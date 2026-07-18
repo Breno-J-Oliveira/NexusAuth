@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '../auth/jwt.service';
 import { AuditService } from '../audit/audit.service';
+import { WebhooksDispatcher } from '../webhooks/webhooks.dispatcher';
+import { MetricsService } from '../metrics/metrics.service';
 import { hashToken } from '../../common/utils/crypto.util';
 
 export interface OAuthProfile {
@@ -19,6 +21,8 @@ export class OAuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private auditService: AuditService,
+    private webhooksDispatcher: WebhooksDispatcher,
+    private metricsService: MetricsService,
   ) {}
 
   async handleOAuthLogin(profile: OAuthProfile, ipAddress?: string, userAgent?: string) {
@@ -66,11 +70,25 @@ export class OAuthService {
       }
     }
 
+    // SECURITY: Validate that the user was properly resolved before proceeding
+    if (!user || !user.id) {
+      throw new UnauthorizedException({
+        code: 'OAUTH_USER_RESOLUTION_FAILED',
+        message: 'Failed to resolve user from OAuth profile',
+      });
+    }
+
     if (user.twoFactorEnabled) {
       const challengeToken = this.jwtService.signChallengeToken({
         sub: user.id,
         email: user.email,
         role: user.role,
+      });
+      await this.auditService.log('TWO_FACTOR_CHALLENGE', {
+        userId: user.id,
+        ipAddress,
+        userAgent,
+        metadata: { method: `oauth_${profile.provider}` },
       });
       return { requiresTwoFactor: true, challengeToken };
     }
@@ -111,8 +129,18 @@ export class OAuthService {
 
     await this.auditService.log('LOGIN', {
       userId,
+      ipAddress,
+      userAgent,
       metadata: { method: `oauth_${provider}` },
     });
+
+    await this.webhooksDispatcher.dispatch('user.login', {
+      userId,
+      email,
+      method: `oauth_${provider}`,
+    });
+
+    this.metricsService.authLoginsTotal.inc({ status: 'success' });
 
     return { accessToken, refreshToken: rawRefreshToken };
   }

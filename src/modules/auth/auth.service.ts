@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   UnauthorizedException,
   NotFoundException,
@@ -26,6 +26,8 @@ import { hashToken } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   // V47 FIX: Generate dummy hash at runtime
   private readonly DUMMY_HASH = bcrypt.hashSync(
     crypto.randomBytes(32).toString('hex') + 'X'.repeat(40),
@@ -137,11 +139,15 @@ export class AuthService {
     }
 
     // V37 FIX: enforce email verification
+    // SECURITY: Use generic error message to prevent user enumeration.
+    // An attacker must not be able to distinguish "email not found" from
+    // "email exists but not verified" — both return the same message.
     const requireEmailVerified = process.env.REQUIRE_EMAIL_VERIFIED !== 'false';
     if (requireEmailVerified && !user.emailVerified) {
+      await this.redisService.del(`lockout:${dto.email}`);
       await this.auditService.log('LOGIN_FAILED', { userId: user.id, ipAddress, userAgent, metadata: { reason: 'email_not_verified' }, success: false });
       this.metricsService.authLoginsTotal.inc({ status: 'failed' });
-      throw new UnauthorizedException({ code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before logging in. Check your inbox for the verification link.' });
+      throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' });
     }
 
     await this.redisService.del(`lockout:${dto.email}`);
@@ -192,17 +198,65 @@ export class AuthService {
     if (count === 1) await this.redisService.expire(key, 15 * 60);
   }
 
-  async refresh(dto: RefreshDto) {
+  async refresh(dto: RefreshDto, ipAddress?: string) {
     const hashedRefreshToken = hashToken(dto.refreshToken);
     const existingToken = await this.prisma.refreshToken.findUnique({ where: { token: hashedRefreshToken } });
 
+    // REFRESH TOKEN FAMILY — enterprise-grade replay detection.
+    // If a previously-revoked token is reused (stolen by attacker), we revoke
+    // the ENTIRE token family across ALL sessions for that user. This is stronger
+    // than per-session revocation because an attacker may have stolen tokens
+    // from different sessions.
     if (existingToken && existingToken.revoked) {
+      const now = Date.now();
+      const windowMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const familyKey = `refresh-family:revoked:${existingToken.userId}`;
+      
+      // Check if this is a repeated reuse attempt (attack pattern)
+      const reuseCount = await this.redisService.incr(
+        `refresh-reuse:${existingToken.userId}:${Math.floor(now / 60000)}`,
+      );
+      if (reuseCount === 1) {
+        await this.redisService.expire(
+          `refresh-reuse:${existingToken.userId}:${Math.floor(now / 60000)}`,
+          120,
+        );
+      }
+      
+      // Mark the entire refresh family as compromised for the detection window
+      await this.redisService.set(familyKey, '1', Math.ceil(windowMs / 1000));
+
+      // Revoke ALL tokens across ALL sessions for this user
       await this.prisma.$transaction([
-        this.prisma.session.update({ where: { id: existingToken.sessionId }, data: { active: false } }),
-        this.prisma.refreshToken.updateMany({ where: { sessionId: existingToken.sessionId }, data: { revoked: true } }),
+        this.prisma.session.updateMany({
+          where: { userId: existingToken.userId, active: true },
+          data: { active: false },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { userId: existingToken.userId, revoked: false },
+          data: { revoked: true },
+        }),
       ]);
-      await this.auditService.log('REFRESH_TOKEN_REUSE_DETECTED', { userId: existingToken.userId, metadata: { sessionId: existingToken.sessionId } });
-      throw new UnauthorizedException({ code: 'REFRESH_TOKEN_REVOKED', message: 'Refresh token has been revoked' });
+      
+      // SECURITY: Log with high severity — indicates potential token theft
+      this.logger.error(
+        `Refresh token reuse detected for user ${existingToken.userId} — ` +
+        `revoking ALL tokens across ALL sessions. Reuse count in window: ${reuseCount}`,
+      );
+      
+      await this.auditService.log('REFRESH_TOKEN_REUSE_DETECTED', {
+        userId: existingToken.userId,
+        metadata: {
+          sessionId: existingToken.sessionId,
+          tokenFamilyRevoked: true,
+          allSessionsRevoked: true,
+          reuseCountInWindow: reuseCount,
+        },
+      });
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_REVOKED',
+        message: 'Refresh token has been revoked',
+      });
     }
 
     const result = await this.prisma.refreshToken.updateMany({
@@ -233,6 +287,21 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found' });
+
+    // REFRESH TOKEN FAMILY: Check if the family has been compromised (previous reuse detected)
+    const familyKey = `refresh-family:revoked:${user.id}`;
+    const familyRevoked = await this.redisService.exists(familyKey);
+    if (familyRevoked) {
+      await this.prisma.session.update({ where: { id: session.id }, data: { active: false } });
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: user.id, revoked: false },
+        data: { revoked: true },
+      });
+      throw new UnauthorizedException({
+        code: 'TOKEN_FAMILY_REVOKED',
+        message: 'Token family has been revoked due to suspected compromise',
+      });
+    }
 
     const newRawRefreshToken = crypto.randomUUID();
     const newHashedRefreshToken = hashToken(newRawRefreshToken);

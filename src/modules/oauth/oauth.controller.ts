@@ -31,7 +31,7 @@ export class OAuthController {
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const ipAddress = req.ip || 'unknown';
-    const key = `ratelimit:oauth:${ipAddress}`;
+    const key = `ratelimit:oauth:google:${ipAddress}`;
     const count = await this.redisService.incr(key);
     if (count === 1) await this.redisService.expire(key, 60);
     if (count > 10) {
@@ -63,7 +63,7 @@ export class OAuthController {
   async githubCallback(@Req() req: Request, @Res() res: Response) {
     const ipAddress = req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || 'Unknown';
-    const key = `ratelimit:oauth:${ipAddress}`;
+    const key = `ratelimit:oauth:github:${ipAddress}`;
     const count = await this.redisService.incr(key);
     if (count === 1) await this.redisService.expire(key, 60);
     if (count > 10) {

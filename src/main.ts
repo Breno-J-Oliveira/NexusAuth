@@ -51,14 +51,14 @@ async function bootstrap() {
     try {
       await prismaService.$disconnect();
       await redisService.onModuleDestroy();
-      logger.log('All connections closed. Exiting.');
-      process.exit(0);
+      logger.log('All connections closed.');
     } catch (err) {
       logger.error('Error during shutdown', err);
-      process.exit(1);
     }
   };
 
+  // SECURITY: Use NestJS enableShutdownHooks() (set in app.config.ts) for graceful shutdown.
+  // Do NOT call process.exit() manually — it short-circuits Nest lifecycle hooks.
   process.on('SIGTERM', () => handleShutdown('SIGTERM'));
   process.on('SIGINT', () => handleShutdown('SIGINT'));
 

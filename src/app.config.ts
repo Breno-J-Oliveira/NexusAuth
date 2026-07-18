@@ -1,4 +1,4 @@
-﻿import {
+import {
   INestApplication,
   ValidationPipe,
   Logger,
@@ -6,7 +6,7 @@
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -26,6 +26,8 @@ import { IdempotencyInterceptor } from './common/interceptors/idempotency.interc
 export function configureApp(app: INestApplication): void {
   const configService = app.get(ConfigService);
   const logger = new Logger('AppConfig');
+  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
+  const isProd = nodeEnv === 'production';
 
   // 1. Trust proxy configuration (must be first)
   const proxyHops = configService.get<number>('TRUST_PROXY_HOPS', 1);
@@ -33,28 +35,45 @@ export function configureApp(app: INestApplication): void {
     (app.getHttpAdapter().getInstance() as any).set('trust proxy', proxyHops);
   }
 
-  // 2. Helmet â€” security headers (CSP, HSTS, etc.)
+  // 2. Helmet — security headers (CSP, HSTS, etc.)
   // V7/V37 (HSTS 2y), CSP tightened where possible
   app.use(
     helmet({
       contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          // Swagger UI in development still requires unsafe-inline + unsafe-eval.
-          // In production, /docs is disabled (see main.ts), so this only matters
-          // for dev. If you need stricter CSP in dev, set DISABLE_DOCS=true.
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-          imgSrc: ["'self'", 'data:', 'https:'],
-          connectSrc: ["'self'"],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-          formAction: ["'self'"],
-          baseUri: ["'self'"],
-          frameAncestors: ["'none'"],
-        },
+        directives: isProd
+          ? {
+              // SECURITY: Strict CSP for production — no unsafe-inline/eval
+              defaultSrc: ["'self'"],
+              styleSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              imgSrc: ["'self'", 'data:', 'https:'],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'"],
+              objectSrc: ["'none'"],
+              mediaSrc: ["'self'"],
+              frameSrc: ["'none'"],
+              formAction: ["'self'"],
+              baseUri: ["'self'"],
+              frameAncestors: ["'none'"],
+              // SECURITY: Add upgrade-insecure-requests to force HTTPS
+              upgradeInsecureRequests: [],
+            }
+          : {
+              defaultSrc: ["'self'"],
+              // Swagger UI in development requires unsafe-inline + unsafe-eval.
+              // In production, /docs is disabled (see main.ts).
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+              imgSrc: ["'self'", 'data:', 'https:'],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'"],
+              objectSrc: ["'none'"],
+              mediaSrc: ["'self'"],
+              frameSrc: ["'none'"],
+              formAction: ["'self'"],
+              baseUri: ["'self'"],
+              frameAncestors: ["'none'"],
+            },
         reportOnly: process.env.CSP_REPORT_ONLY === 'true',
       },
       crossOriginOpenerPolicy: { policy: 'same-origin' },
@@ -66,11 +85,11 @@ export function configureApp(app: INestApplication): void {
         includeSubDomains: true,
         preload: true,
       },
-      ieNoOpen: {},
-      noSniff: {},
+      ieNoOpen: true,
+      noSniff: true,
       permittedCrossDomainPolicies: { permittedPolicies: 'none' },
       referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-      xssFilter: {},
+      xssFilter: true,
     }),
   );
 
@@ -98,15 +117,30 @@ export function configureApp(app: INestApplication): void {
   // MUST be added at that point.
 
   // 6. CORS
-  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const corsOrigins = configService
     .get<string>('CORS_ORIGINS', '')
     .split(',')
     .map((o: string) => o.trim())
     .filter(Boolean);
 
+  // SECURITY: CORS must NEVER reflect Origin. In production, require explicit allowlist.
+  // In development, allow localhost only. Never use wildcard `true`.
+  const allowedOrigins = corsOrigins.length > 0
+    ? corsOrigins
+    : (nodeEnv === 'development' ? ['http://localhost:3000', 'http://localhost:4000', 'http://127.0.0.1:3000'] : []);
+
   app.enableCors({
-    origin: (corsOrigins.length > 0 ? corsOrigins : (nodeEnv === 'development' ? true : false)),
+    origin: (origin, callback) => {
+      // If no origins configured in production, block all cross-origin requests
+      if (allowedOrigins.length === 0) {
+        return callback(null, false);
+      }
+      // Allow if origin is in the explicit allowlist OR if no origin header (same-origin/server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     allowedHeaders: [

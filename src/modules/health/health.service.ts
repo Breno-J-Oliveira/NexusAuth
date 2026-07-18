@@ -1,9 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
 export class HealthService {
+  private readonly logger = new Logger(HealthService.name);
+
+  // Readiness probe cache to prevent DB overload from Kubernetes health checks
+  private cachedReadiness: {
+    status: string;
+    timestamp: string;
+    services: any;
+  } | null = null;
+  private cacheExpiresAt = 0;
+  private readonly CACHE_TTL_MS = 5_000; // 5 seconds
+
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
@@ -17,6 +28,11 @@ export class HealthService {
   }
 
   async readiness() {
+    // Return cached result if still valid (prevents DB overload from health probes)
+    if (this.cachedReadiness && Date.now() < this.cacheExpiresAt) {
+      return this.cachedReadiness;
+    }
+
     const [db, redis] = await Promise.allSettled([
       this.checkDatabase(),
       this.checkRedis(),
@@ -26,7 +42,7 @@ export class HealthService {
     const redisOk = redis.status === 'fulfilled';
     const allOk = dbOk && redisOk;
 
-    return {
+    const result = {
       status: allOk ? 'ok' : 'not_ready',
       timestamp: new Date().toISOString(),
       services: {
@@ -40,8 +56,22 @@ export class HealthService {
           // SECURITY: Don't leak internal error messages to public endpoints
           ...(redis.status === 'rejected' && { error: 'Redis connection failed' }),
         },
+        circuitBreaker: {
+          status: this.redisService.isCircuitOpen() ? 'open' : 'closed',
+        },
       },
     };
+
+    // Cache the result to protect DB from health check storms
+    if (allOk) {
+      this.cachedReadiness = result;
+      this.cacheExpiresAt = Date.now() + this.CACHE_TTL_MS;
+    } else {
+      // Don't cache unhealthy results — allow immediate retry
+      this.cachedReadiness = null;
+    }
+
+    return result;
   }
 
   async checkAll() {

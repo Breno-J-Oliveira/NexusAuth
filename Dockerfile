@@ -42,4 +42,18 @@ USER node
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "if [ ! -f /app/keys/private.pem ]; then openssl genrsa -out /app/keys/private.pem 2048 && openssl rsa -in /app/keys/private.pem -pubout -out /app/keys/public.pem; fi && npx prisma migrate deploy && node dist/main"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 --start-period=10s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
+# SECURITY: Keys MUST be mounted as a volume in production. The generate-keys
+# fallback is for local development only. In production, this will log an error
+# and the app will exit (see jwt.service.ts constructor).
+CMD ["sh", "-c", "\
+  if [ ! -f /app/keys/private.pem ]; then \
+    echo '[WARNING] No RSA keys found at /app/keys. Generating ephemeral keys for development only.'; \
+    echo '[WARNING] In production, mount persistent keys via Docker volume or k8s secret.'; \
+    openssl genrsa -out /app/keys/private.pem 2048 && \
+    openssl rsa -in /app/keys/private.pem -pubout -out /app/keys/public.pem; \
+  fi && \
+  npx prisma migrate deploy && \
+  node dist/main"]

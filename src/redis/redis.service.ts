@@ -1,10 +1,18 @@
 import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
+import { CircuitBreaker, CircuitBreakerOpenError } from '../common/utils/circuit-breaker.util';
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private client: Redis;
   private readonly logger = new Logger(RedisService.name);
+
+  // RESILIENCE: Circuit breaker to prevent cascading failures when Redis is unavailable
+  private readonly circuitBreaker = new CircuitBreaker('RedisService', {
+    failureThreshold: 5,
+    resetTimeoutMs: 30_000, // 30s
+    halfOpenMaxRequests: 3,
+  });
 
   // SECURITY: Maximum key length to prevent memory attacks
   private readonly MAX_KEY_LENGTH = 1024;
@@ -13,12 +21,52 @@ export class RedisService implements OnModuleDestroy {
 
   constructor() {
     const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-    this.client = new Redis(redisUrl);
+    this.client = new Redis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      retryStrategy: (times) => {
+        if (times > 5) return null; // Stop retrying after 5 attempts
+        return Math.min(times * 200, 2000); // Exponential backoff capped at 2s
+      },
+    });
     
     // SECURITY: Log connection errors
     this.client.on('error', (err) => {
       this.logger.error(`Redis connection error: ${err.message}`);
     });
+  }
+
+  /**
+   * Execute an operation with circuit breaker protection.
+   * If Redis is in circuit-breaker OPEN state, the operation fails immediately
+   * instead of hanging on a dead connection.
+   */
+  private async withCircuitBreaker<T>(
+    operation: () => Promise<T>,
+    fallback?: () => T | Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.circuitBreaker.execute(operation, fallback);
+    } catch (err) {
+      if (err instanceof CircuitBreakerOpenError) {
+        this.logger.warn(`Redis operation rejected by circuit breaker`);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Get the circuit breaker state for health checks / metrics.
+   */
+  getCircuitState(): string {
+    return this.circuitBreaker.currentState;
+  }
+
+  isCircuitOpen(): boolean {
+    return this.circuitBreaker.isOpen;
+  }
+
+  forceCloseCircuit(): void {
+    this.circuitBreaker.forceClose();
   }
 
   async onModuleDestroy() {
@@ -61,11 +109,13 @@ export class RedisService implements OnModuleDestroy {
       throw new Error('TTL must be a non-negative number');
     }
     
-    if (ttlSeconds && ttlSeconds > 0) {
-      await this.client.set(key, value, 'EX', ttlSeconds);
-    } else {
-      await this.client.set(key, value);
-    }
+    await this.withCircuitBreaker(async () => {
+      if (ttlSeconds && ttlSeconds > 0) {
+        await this.client.set(key, value, 'EX', ttlSeconds);
+      } else {
+        await this.client.set(key, value);
+      }
+    });
   }
 
   async setNX(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
@@ -76,29 +126,39 @@ export class RedisService implements OnModuleDestroy {
       throw new Error('TTL must be a non-negative number');
     }
     
-    if (ttlSeconds && ttlSeconds > 0) {
-      const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
-      return result === 'OK';
-    } else {
-      const result = await this.client.set(key, value, 'NX');
-      return result === 'OK';
-    }
+    return this.withCircuitBreaker(async () => {
+      if (ttlSeconds && ttlSeconds > 0) {
+        const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+      } else {
+        const result = await this.client.set(key, value, 'NX');
+        return result === 'OK';
+      }
+    });
   }
 
   async get(key: string): Promise<string | null> {
     this.validateKey(key);
-    return this.client.get(key);
+    return this.withCircuitBreaker(
+      () => this.client.get(key),
+      () => null, // Fallback: return null as if key doesn't exist (degraded mode)
+    );
   }
 
   async del(key: string): Promise<void> {
     this.validateKey(key);
-    await this.client.del(key);
+    await this.withCircuitBreaker(() => this.client.del(key));
   }
 
   async exists(key: string): Promise<boolean> {
     this.validateKey(key);
-    const result = await this.client.exists(key);
-    return result === 1;
+    return this.withCircuitBreaker(
+      async () => {
+        const result = await this.client.exists(key);
+        return result === 1;
+      },
+      () => false, // Fallback: assume key doesn't exist (degraded mode)
+    );
   }
 
   async ping(): Promise<string> {
@@ -107,7 +167,10 @@ export class RedisService implements OnModuleDestroy {
 
   async incr(key: string): Promise<number> {
     this.validateKey(key);
-    return this.client.incr(key);
+    return this.withCircuitBreaker(
+      () => this.client.incr(key),
+      () => 0, // Fallback: return 0 so rate limiting degrades to allow
+    );
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
@@ -118,12 +181,15 @@ export class RedisService implements OnModuleDestroy {
       throw new Error('TTL must be a non-negative number');
     }
     
-    await this.client.expire(key, ttlSeconds);
+    await this.withCircuitBreaker(() => this.client.expire(key, ttlSeconds));
   }
 
   async ttl(key: string): Promise<number> {
     this.validateKey(key);
-    return this.client.ttl(key);
+    return this.withCircuitBreaker(
+      () => this.client.ttl(key),
+      () => -2, // Fallback: -2 means key doesn't exist
+    );
   }
 
   // SECURITY: flushall is extremely dangerous - require explicit confirmation

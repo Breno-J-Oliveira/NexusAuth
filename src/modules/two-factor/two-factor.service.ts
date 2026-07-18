@@ -54,7 +54,9 @@ export class TwoFactorService {
     const secret = authenticator.generateSecret();
     const otpauthUrl = authenticator.keyuri(user.email, 'NexusAuth', secret);
 
-    await this.redisService.set(`2fa:pending:${userId}`, secret, 300);
+    // SECURITY: Encrypt the pending TOTP secret in Redis (at-rest encryption)
+    // The secret is only stored temporarily but should never be in plaintext
+    await this.redisService.set(`2fa:pending:${userId}`, encrypt(secret), 300);
 
     const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
 
@@ -80,13 +82,16 @@ export class TwoFactorService {
       });
     }
 
-    const pendingSecret = await this.redisService.get(`2fa:pending:${userId}`);
-    if (!pendingSecret) {
+    const encryptedSecret = await this.redisService.get(`2fa:pending:${userId}`);
+    if (!encryptedSecret) {
       throw new BadRequestException({
         code: 'TWO_FACTOR_SETUP_EXPIRED',
         message: '2FA setup has expired. Please call /2fa/setup again.',
       });
     }
+
+    // SECURITY: Decrypt the pending TOTP secret from Redis
+    const pendingSecret = decrypt(encryptedSecret);
 
     const isValid = authenticator.verify({
       token: dto.code,

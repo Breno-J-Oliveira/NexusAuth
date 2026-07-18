@@ -6,9 +6,10 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Observable, of, from } from 'rxjs';
-import { tap, mergeMap } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import { RedisService } from '../../redis/redis.service';
 
 const IDEMPOTENCY_HEADER = 'idempotency-key';
@@ -35,6 +36,47 @@ export class IdempotencyInterceptor implements NestInterceptor {
   private readonly logger = new Logger(IdempotencyInterceptor.name);
 
   constructor(private redisService: RedisService) {}
+
+  private stableStringify(input: unknown, seen: WeakSet<object> = new WeakSet()): string {
+    // Deterministic stringify for hashing request bodies.
+    // We avoid external deps: recursively sort object keys.
+    // SECURITY: Detect circular references to prevent infinite loops (DoS).
+    if (input === null || input === undefined) return String(input);
+
+    if (typeof input !== 'object') {
+      return JSON.stringify(input);
+    }
+
+    // SECURITY: Prevent infinite recursion on circular references
+    if (seen.has(input as object)) {
+      throw new BadRequestException({
+        code: 'INVALID_REQUEST_BODY',
+        message: 'Request body contains circular references',
+      });
+    }
+    seen.add(input as object);
+
+    if (Array.isArray(input)) {
+      return `[${input.map((v) => this.stableStringify(v, seen)).join(',')}]`;
+    }
+
+    const obj = input as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const props = keys.map((k) => `${JSON.stringify(k)}:${this.stableStringify(obj[k], seen)}`);
+    return `{${props.join(',')}}`;
+  }
+
+  private sha256Hex(text: string): string {
+    return createHash('sha256').update(text).digest('hex');
+  }
+
+  private computeBodyHash(req: Request): string {
+    // Body is already parsed by express.json() / urlencoded.
+    // We only hash the parsed value to avoid raw stream issues.
+    const body = (req as any).body;
+    if (body === undefined) return this.sha256Hex('__NO_BODY__');
+    return this.sha256Hex(this.stableStringify(body));
+  }
 
   async intercept(
     context: ExecutionContext,
@@ -71,29 +113,52 @@ export class IdempotencyInterceptor implements NestInterceptor {
       });
     }
 
-    // Scope the key to the authenticated user. After guards run,
-    // req.user.sub is populated by JwtAuthGuard.
-    // If unauthenticated, use the raw Authorization header (or 'anon'
-    // as a last resort) so two anonymous callers with the same key
-    // can still collide — but that's acceptable because anon routes
-    // (login, register) are exactly the ones you'd want to dedupe.
-    const userId =
-      (req.user as any)?.sub ||
-      (req.headers.authorization
-        ? `tok:${(req.headers.authorization as string).slice(0, 32)}`
-        : 'anon');
+    const method = req.method.toUpperCase();
 
-    const cacheKey = `idempotency:${userId}:${key}`;
+    // Prefer stable route path (route is attached by Nest).
+    // Avoid req.originalUrl because it may include volatile querystrings.
+    const routePath =
+      (req as any).route?.path ??
+      // fallback for edge cases (still more stable than originalUrl)
+      req.path ??
+      'unknown-route';
+
+    const bodyHash = this.computeBodyHash(req);
+
+    // For authenticated requests, scope by userId (req.user.sub).
+    // For anonymous/public routes (e.g. /auth/login which is @Public), use a fixed scope
+    // (NOT the bodyHash) so that two different clients using the same Idempotency-Key
+    // can hit the SAME cache entry and therefore allow bodyHash mismatch detection
+    // (replay vs 409 conflict) to work as intended.
+    const userScope = (req.user as any)?.sub ?? 'public';
+    const cacheKey = `idempotency:${userScope}:${method}:${routePath}:${key}`;
+
     const cached = await this.redisService.get(cacheKey);
 
     if (cached) {
       try {
-        const parsed = JSON.parse(cached);
+        const parsed = JSON.parse(cached) as {
+          status: number;
+          body: any;
+          bodyHash: string;
+        };
+
+        if (parsed.bodyHash !== bodyHash) {
+          throw new BadRequestException({
+            code: 'IDEMPOTENCY_KEY_CONFLICT',
+            message:
+              'Idempotency-Key conflict: request body does not match the cached request',
+          });
+        }
+
         res.setHeader('Idempotent-Replay', 'true');
         res.setHeader('X-Idempotency-Key', key);
         return of(parsed.body);
-      } catch {
-        // Corrupted cache, fall through and re-process
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          throw err;
+        }
+        // Corrupted cache / invalid payload: fall through and re-process
         await this.redisService.del(cacheKey);
       }
     }
@@ -105,12 +170,18 @@ export class IdempotencyInterceptor implements NestInterceptor {
           // Only cache successful responses; surface 4xx/5xx to the caller
           // (the request can be retried after fixing the input)
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            const data = JSON.stringify({ status: res.statusCode, body });
+            const data = JSON.stringify({
+              status: res.statusCode,
+              body,
+              bodyHash,
+            });
             this.redisService
               .set(cacheKey, data, IDEMPOTENCY_TTL)
-              .catch((err) => {
+              .catch((err2) => {
                 this.logger.error(
-                  `Failed to cache idempotency response: ${err instanceof Error ? err.message : 'unknown'}`,
+                  `Failed to cache idempotency response: ${
+                    err2 instanceof Error ? err2.message : 'unknown'
+                  }`,
                 );
               });
           }

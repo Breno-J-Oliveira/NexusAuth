@@ -1,13 +1,7 @@
-﻿# ðŸ” NexusAuth â€” MicrosserviÃ§o de AutenticaÃ§Ã£o Centralizada
+# NexusAuth — Microsservico de Autenticacao Centralizada
 
 <p align="center">
   <img src="docs/logo/logo 16x9.png" alt="NexusAuth Banner" width="640">
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Status-FINALIZADO-10B981?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Status Finalizado">
-  <img src="https://img.shields.io/badge/VersÃ£o-1.0-2563EB?style=for-the-badge" alt="VersÃ£o 1.0">
-  <img src="https://img.shields.io/badge/Projeto-PortfÃ³lio%20Pessoal-111827?style=for-the-badge" alt="Projeto Pessoal">
 </p>
 
 <p align="center">
@@ -23,600 +17,463 @@
 
 ---
 
-## ðŸ“‘ Ãndice
+## O que e o NexusAuth?
 
-1. [Sobre o Projeto](#-sobre-o-projeto)
-2. [Estado Atual](#-estado-atual)
-3. [Funcionalidades Principais](#-funcionalidades-principais)
-4. [Tecnologias e Bibliotecas](#-tecnologias-e-bibliotecas)
-5. [Arquitetura](#-arquitetura)
-6. [Endpoints da API](#-endpoints-da-api)
-7. [Fluxos de AutenticaÃ§Ã£o](#-fluxos-de-autenticaÃ§Ã£o)
-8. [IntegraÃ§Ãµes com Apps](#-integraÃ§Ãµes-com-apps)
-9. [SeguranÃ§a](#-seguranÃ§a)
-10. [Observabilidade](#-observabilidade)
-11. [Como Rodar Localmente](#-como-rodar-localmente)
-12. [Deploy em ProduÃ§Ã£o](#-deploy-em-produÃ§Ã£o)
-13. [PrÃ³ximas AtualizaÃ§Ãµes](#-prÃ³ximas-atualizaÃ§Ãµes)
-14. [Autor](#-autor)
+O **NexusAuth** e um servico completo de autenticacao e autorizacao, construido como API REST independente. Ele resolve o problema de "criar sistema de login do zero" para qualquer aplicacao — seja um SaaS multi-tenant, um dashboard, um e-commerce ou um app mobile.
+
+**Plug-and-play:** qualquer aplicacao integra em minutos. O usuario cria a conta uma vez e acessa todos os seus apps com o mesmo login (Single Sign-On).
+
+Projeto desenvolvido como **portfolio pessoal** (solo), demonstrando dominio de seguranca, arquitetura de microsservicos e boas praticas de APIs modernas.
 
 ---
 
-## ðŸŽ¯ Sobre o Projeto
+## O que ele entrega?
 
-O **NexusAuth** Ã© um microsserviÃ§o de autenticaÃ§Ã£o centralizada, construÃ­do como API REST independente com **NestJS** e **TypeScript**. Projetado para ser plug-and-play: qualquer aplicaÃ§Ã£o pode integrar via middleware ou SDK compartilhado. Ã‰ o **ponto Ãºnico de identidade** para todos os projetos â€” um usuÃ¡rio se cadastra uma vez e acessa todos os apps (SSO).
+### Para o usuario final
+- Cadastro com confirmacao de email
+- Login tradicional (email + senha)
+- Login rapido com Google ou GitHub
+- Login sem senha via Magic Link enviado no email
+- Autenticacao em dois fatores (2FA) com Google Authenticator
+- Recuperacao de senha por email
+- Painel de sessoes ativas (ve e revoga dispositivos conectados)
+- Exportacao e exclusao de dados pessoais (LGPD/GDPR)
 
-A proposta Ã© servir como autenticaÃ§Ã£o reutilizÃ¡vel para todos os meus outros projetos (Zenith, SaaS Multiempresa, Dashboard Financeiro, TCC SENAI), injetando o `tenant_id` direto no JWT quando aplicÃ¡vel.
+### Para o desenvolvedor
+- **API REST completa** com documentacao Swagger interativa
+- **JWT com RS256** (chave publica/privada) — muito mais seguro que HS256
+- **Endpoint JWKS** (`/.well-known/jwks.json`) para validacao sem compartilhar segredos
+- **Multi-tenant nativo** — cada cliente tem seu `tenant_id` isolado no JWT
+- **SDK compartilhado** (`@nexus/auth-sdk`) para integrar em minutos
+- **Webhooks** que notificam seus apps em tempo real (login, registro, alteracao de senha, etc.)
+- **API Keys** para autenticacao servico-a-servico (microservicos, cron jobs, pipelines CI/CD)
+- **RBAC completo** — ADMIN, MANAGER, USER com permissoes granulares
+- **Impersonation** — administradores podem agir como um usuario especifico (tudo auditado)
+- **Metricas Prometheus** prontas para Grafana
+- **Health checks** para Kubernetes (liveness + readiness)
 
-O projeto foi desenvolvido como **projeto de portfÃ³lio pessoal** (solo), demonstrando conhecimento profundo de seguranÃ§a, arquitetura de microsserviÃ§os e boas prÃ¡ticas de API.
-
----
-
-## ðŸ“Š Estado Atual
-
-O projeto estÃ¡ **finalizado e endurecido**, com **84 vulnerabilidades corrigidas** atravÃ©s de 4 passagens de auditoria de seguranÃ§a. Inclui proteÃ§Ãµes contra:
-
-- **OWASP Top 10** completo
-- **LGPD/GDPR** (export/delete de dados pessoais, consentimento)
-- **JWT algorithm confusion** (alg: none, HS256 attack)
-- **SSRF** (IP literal, private IP, DNS rebinding)
-- **CSRF, XSS, timing attacks, race conditions**
-- **Brute force, credential stuffing** (rate limiting progressivo)
-- **Privilege escalation** (RBAC + permission guard)
-
-**Camadas de defesa ativas:** 12+ (transporte, headers, auth, autorizaÃ§Ã£o, validaÃ§Ã£o, rate limit, criptografia, auditoria, concorrÃªncia, LGPD, threat intel, observabilidade).
-
-### EstatÃ­sticas
-
-| MÃ©trica | Valor |
-|---------|-------|
-| Vulnerabilidades corrigidas | **84** |
-| Camadas de defesa | **12+** |
-| Compliance | **LGPD, GDPR, OWASP Top 10** |
-| MÃ³dulos de seguranÃ§a | **8 novos** (CSRF, Idempotency, Security Headers, LGPD, Threat Intel, Audit Integrity, Breached Password, Lockout) |
-| Middlewares | **3 novos** |
-| UtilitÃ¡rios | **3 novos** (HIBP, Audit Chain, Lockout) |
-
----
-
-## ðŸ”‘ Funcionalidades Principais
-
-### AutenticaÃ§Ã£o Core
-- **Access Token (15min) + Refresh Token (7 dias):** tokens divididos para seguranÃ§a mÃ¡xima
-- **Token Rotation:** refresh token Ã© invalidado e regenerado a cada uso
-- **Blacklist no Redis:** logout invalida o token imediatamente
-- **JWT RS256:** assinatura com chave pÃºblica/privada (nÃ£o HS256 simÃ©trico)
-- **Algorithm Whitelist:** rejeita `alg: none` e HS256 confusion attacks
-- **JWKS endpoint:** apps validam token via chave pÃºblica sem segredo compartilhado
-
-### Cadastro & Conta
-- **Registro com verificaÃ§Ã£o de email obrigatÃ³ria** (anti account takeover)
-- **Breached Password Detection** (Have I Been Pwned k-anonymity)
-- **Login social (OAuth2):** Google e GitHub â€” com email verification check
-- **Magic link:** login sem senha via link enviado no email (passwordless)
-- **RecuperaÃ§Ã£o de senha:** via email com token de uso Ãºnico (expira em 15min)
-- **PolÃ­ticas de senha:** mÃ­nimo 8 caracteres, complexidade, histÃ³rico (nÃ£o repetir Ãºltimas 5), bloqueio de senhas comuns e padrÃµes de teclado
-- **Constant-time password comparison** (anti timing attack)
-
-### SeguranÃ§a
-- **Helmet** com CSP estrito + HSTS preload (2 anos) + COOP/CORP
-- **CSRF Protection** (double-submit cookie)
-- **Idempotency Keys** (Idempotency-Key header)
-- **Permissions-Policy** (desabilita geolocation, camera, mic, etc.)
-- **Rate Limiting:** por IP e por email
-- **Progressive Account Lockout:** 1â†’5â†’15minâ†’24hâ†’disabled
-- **2FA (TOTP):** com backup codes, replay detection, challenge token blacklist
-- **SSRF Guard:** bloqueia IPs privados, link-local, metadata services
-- **Atomic Logout:** transaÃ§Ã£o Ãºnica previne race conditions
-
-### AutorizaÃ§Ã£o
-- **RBAC:** roles (admin, manager, user)
-- **Multi-tenant:** `tenant_id` no JWT + tenant isolation
-- **Impersonation:** admin age como outro usuÃ¡rio (auditado, sem chaining)
-- **PermissÃµes granulares:** `users:read`, `billing:manage`, etc.
-- **Permission Guard** com whitelist de roles em DTOs
-
-### GestÃ£o de SessÃµes
-- **SessÃµes ativas:** listar todos os dispositivos (device, IP, localizaÃ§Ã£o)
-- **Revogar sessÃ£o:** logout remoto
-- **Logout global:** revoga todas as sessÃµes
-- **Concurrent session policy** (MAX_CONCURRENT_SESSIONS)
-- **Inactivity timeout** (SESSION_INACTIVITY_HOURS)
-
-### LGPD/GDPR
-- **Export de dados pessoais** (`GET /me/data/export`) com SHA-256 checksum
-- **Soft/Hard delete** (`DELETE /me/data`) com confirmaÃ§Ã£o explÃ­cita
-- **Consentimento granular** (`POST /me/data/consent`)
-- **Audit log integrity** (hash chain estilo Certificate Transparency)
-
-### IntegraÃ§Ã£o com Apps
-- **SDK compartilhado:** package npm `@nexus/auth-sdk`
-- **Webhooks:** notifica apps em eventos (HMAC assinado)
-- **API Keys:** autenticaÃ§Ã£o serviÃ§o-a-serviÃ§o
-- **JWKS endpoint:** `/.well-known/jwks.json`
-- **Threat Intelligence:** IP reputation scoring
-
-### Observabilidade
-- **Logs estruturados (Pino)** com redact de PII (LGPD)
-- **MÃ©tricas Prometheus** (`/metrics`)
-- **Health check** (`/health/live`, `/health/ready`)
-- **Audit log** completo com retenÃ§Ã£o configurÃ¡vel
-- **Correlation ID** em cada request
+### Para o SaaS / Empresa
+- **Single Sign-On real** — mesma conta em todos os apps do ecossistema
+- **Multi-tenant completo** — isole clientes sem duplicar infraestrutura
+- **Login social** — menos friccao, mais conversao
+- **2FA** — requisito para clientes enterprise e compliance
+- **LGPD/GDPR compliant** — export, delete, consentimento granular
+- **12 camadas de defesa** — pronto para ir a producao com seguranca enterprise-grade
+- **Dockerizado** — sobe com um comando
 
 ---
 
-## ðŸ› ï¸ Stack TecnolÃ³gica
+## Como funciona?
 
-| Camada | Tecnologia | VersÃ£o |
-|--------|-----------|--------|
-| **Runtime** | Node.js | 20+ |
-| **Framework** | NestJS | 10.4 |
-| **Linguagem** | TypeScript | 5.5 |
-| **ORM** | Prisma | 5.18 |
-| **Banco principal** | PostgreSQL | 16 |
-| **Cache/Blacklist** | Redis | 7 |
-| **Hashing** | bcrypt | 5.1 |
-| **JWT** | jsonwebtoken | 9.0 |
-| **2FA** | otplib (TOTP) | 12.0 |
-| **OAuth2** | passport-google-oauth20, passport-github2 | â€” |
-| **ValidaÃ§Ã£o** | Zod + class-validator | 3.23 / 0.14 |
-| **DocumentaÃ§Ã£o** | Swagger/OpenAPI | 7.4 |
-| **Logs** | Pino (com redact) | 9.3 |
-| **MÃ©tricas** | prom-client | 15.1 |
-| **SeguranÃ§a** | Helmet, cookie-parser | 7.1 / 1.4 |
-| **Container** | Docker + Docker Compose | â€” |
-
----
-
-## ðŸ—ï¸ Arquitetura
+### Fluxo de Login Tradicional
 
 ```
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚                  Load Balancer / WAF                         â”‚
-â”‚            (HTTPS termination, DDoS protection)              â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                            â”‚
-                            â–¼
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚                     NexusAuth API                             â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
-â”‚  â”‚  Middlewares (ordem)                                    â”‚ â”‚
-â”‚  â”‚  1. Trust proxy    2. Helmet (CSP, HSTS)                â”‚ â”‚
-â”‚  â”‚  3. Body parser    4. Cookie parser                     â”‚ â”‚
-â”‚  â”‚  5. Security headers (Permissions-Policy)              â”‚ â”‚
-â”‚  â”‚  6. CSRF           7. Idempotency                       â”‚ â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-â”‚                            â”‚                                â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
-â”‚  â”‚  Guards                                                 â”‚ â”‚
-â”‚  â”‚  â€¢ JwtAuthGuard (global)   â€¢ ApiKeyGuard               â”‚ â”‚
-â”‚  â”‚  â€¢ RolesGuard              â€¢ PermissionGuard            â”‚ â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-â”‚                            â”‚                                â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
-â”‚  â”‚  Interceptors / Filters                                 â”‚ â”‚
-â”‚  â”‚  â€¢ AllExceptionsFilter (sem leak de erros)             â”‚ â”‚
-â”‚  â”‚  â€¢ LoggingInterceptor (Pino + correlation ID)          â”‚ â”‚
-â”‚  â”‚  â€¢ MetricsInterceptor (Prometheus)                     â”‚ â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-â”‚                            â”‚                                â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
-â”‚  â”‚  MÃ³dulos                                                â”‚ â”‚
-â”‚  â”‚  Auth Â· 2FA Â· OAuth Â· Sessions Â· Tenant Â· Admin        â”‚ â”‚
-â”‚  â”‚  Webhooks Â· API Keys Â· Audit Â· JWKS Â· LGPD             â”‚ â”‚
-â”‚  â”‚  Health Â· Metrics Â· Threat Intel                        â”‚ â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-â”‚                            â”‚                                â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
-â”‚  â”‚  Utilities                                              â”‚ â”‚
-â”‚  â”‚  â€¢ crypto (AES-256-GCM, SHA-256, timingSafeEqual)      â”‚ â”‚
-â”‚  â”‚  â€¢ ssrf-guard (validaÃ§Ã£o de URLs)                       â”‚ â”‚
-â”‚  â”‚  â€¢ breached-password (HIBP k-anonymity)                â”‚ â”‚
-â”‚  â”‚  â€¢ audit-integrity (hash chain)                        â”‚ â”‚
-â”‚  â”‚  â€¢ lockout (progressive)                               â”‚ â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                            â”‚
-                            â–¼
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚              PostgreSQL  Â·  Redis  Â·  SMTP                    â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+1. App envia email + senha para POST /auth/login
+2. NexusAuth verifica:
+   - Rate limit (maximo 5 tentativas/min por IP)
+   - Lockout (conta bloqueada apos 5 falhas consecutivas)
+   - Senha (bcrypt, 12 rounds)
+   - Email verificado (obrigatorio em producao)
+3. Se usuario tem 2FA ativo: retorna challengeToken
+   App envia codigo TOTP para POST /2fa/challenge
+4. NexusAuth gera:
+   - Access Token (JWT RS256, 15 minutos)
+   - Refresh Token (UUID, 7 dias, rotacionado a cada uso)
+5. App usa Access Token no header Authorization: Bearer
+6. App renova com Refresh Token quando expira
+7. App faz logout: token e imediatamente invalidado (blacklist no Redis)
 ```
 
-### Estrutura de pastas
+### Fluxo OAuth2 (Google)
 
 ```
-src/
-â”œâ”€â”€ common/
-â”‚   â”œâ”€â”€ guards/         â†’ JWT, ApiKey, Roles, Permission
-â”‚   â”œâ”€â”€ decorators/     â†’ @Public, @CurrentUser, @Roles, @RequirePermission
-â”‚   â”œâ”€â”€ filters/        â†’ AllExceptionsFilter
-â”‚   â”œâ”€â”€ interceptors/   â†’ Logging (Pino), Metrics
-â”‚   â”œâ”€â”€ middleware/     â†’ CSRF, Idempotency, SecurityHeaders
-â”‚   â”œâ”€â”€ pipes/          â†’ ZodValidation
-â”‚   â””â”€â”€ utils/          â†’ crypto, ssrf-guard, breached-password, audit-integrity, lockout
-â”œâ”€â”€ config/             â†’ env validation, configuration
-â”œâ”€â”€ modules/
-â”‚   â”œâ”€â”€ auth/           â†’ login, refresh, logout, register, OAuth
-â”‚   â”œâ”€â”€ two-factor/     â†’ TOTP setup, verify, disable, challenge
-â”‚   â”œâ”€â”€ sessions/       â†’ gestÃ£o de sessÃµes ativas
-â”‚   â”œâ”€â”€ audit/          â†’ audit log + verificaÃ§Ã£o de integridade
-â”‚   â”œâ”€â”€ tenant/         â†’ multi-tenant, convites
-â”‚   â”œâ”€â”€ admin/          â†’ impersonation
-â”‚   â”œâ”€â”€ webhooks/       â†’ dispatch de eventos
-â”‚   â”œâ”€â”€ api-keys/       â†’ autenticaÃ§Ã£o service-to-service
-â”‚   â”œâ”€â”€ oauth/          â†’ estratÃ©gias Google + GitHub
-â”‚   â”œâ”€â”€ jwks/           â†’ endpoint JWKS
-â”‚   â”œâ”€â”€ health/         â†’ health checks
-â”‚   â”œâ”€â”€ metrics/        â†’ Prometheus
-â”‚   â”œâ”€â”€ lgpd/           â†’ export/delete/consent (LGPD/GDPR)
-â”‚   â””â”€â”€ threat-intel/   â†’ IP reputation scoring
-â”œâ”€â”€ prisma/             â†’ PrismaService
-â””â”€â”€ redis/              â†’ RedisService
+1. App redireciona usuario para GET /auth/google
+2. Usuario faz login no Google e concede permissao
+3. Google redireciona para /auth/google/callback
+4. NexusAuth verifica que o email foi confirmado pelo Google
+5. Se usuario existe: vincula conta Google
+   Se nao existe: cria conta nova
+6. Tokens emitidos — mesmo fluxo do login tradicional
+```
+
+### Fluxo Magic Link
+
+```
+1. App envia email para POST /auth/magic-link
+2. Usuario recebe email com link (valido por 15 minutos)
+3. Usuario clica no link ou app envia token para POST /auth/magic-link/verify
+4. NexusAuth valida e emite tokens sem senha
 ```
 
 ---
 
-## ðŸ”Œ Endpoints da API
+## Arquitetura
 
-### AutenticaÃ§Ã£o
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/auth/register` | â€” | Cadastro (envia email verificaÃ§Ã£o) |
-| POST | `/auth/login` | â€” | Login â†’ access + refresh token |
-| POST | `/auth/refresh` | â€” | Renova access token (rotation) |
-| POST | `/auth/logout` | JWT | Blacklist + revoga sessÃ£o |
-| POST | `/auth/forgot-password` | â€” | Solicita reset |
-| POST | `/auth/reset-password` | â€” | Reset com token |
-| POST | `/auth/verify-email` | â€” | Confirma email |
-| POST | `/auth/magic-link` | â€” | Solicita magic link |
-| POST | `/auth/magic-link/verify` | â€” | Valida magic link |
-| GET | `/auth/google` | â€” | Inicia OAuth Google |
-| GET | `/auth/google/callback` | â€” | Callback Google |
-| GET | `/auth/github` | â€” | Inicia OAuth GitHub |
-| GET | `/auth/github/callback` | â€” | Callback GitHub |
+```
+                    HTTPS (TLS 1.3)
+                          |
+              +-----------+-----------+
+              |   Load Balancer / WAF |
+              +-----------+-----------+
+                          |
+              +-----------+-----------+
+              |     NexusAuth API     |
+              |   (NestJS + Node.js)  |
+              |                       |
+              |  Middlewares:         |
+              |  Helmet, CORS, CSP    |
+              |  Body Parser          |
+              |  Security Headers     |
+              |                       |
+              |  Guards (ordem):      |
+              |  ThrottlerGuard       |
+              |  JwtAuthGuard         |
+              |  ApiKeyGuard          |
+              |  RolesGuard           |
+              |                       |
+              |  Interceptors:        |
+              |  Logging (Pino)       |
+              |  Metrics (Prometheus) |
+              |  Idempotency          |
+              +-----------+-----------+
+                          |
+            +-------------+-------------+
+            |                           |
+    +-------+-------+           +-------+-------+
+    |  PostgreSQL 16 |           |    Redis 7    |
+    |  (dados)       |           | (cache/black- |
+    |                |           |  list/rate    |
+    |                |           |  limit)       |
+    +----------------+           +---------------+
+```
 
-### 2FA
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/2fa/setup` | JWT | Gera QR code TOTP |
-| POST | `/2fa/verify` | JWT | Ativa 2FA |
-| POST | `/2fa/disable` | JWT | Desativa 2FA |
-| POST | `/2fa/challenge` | â€” | Verifica TOTP no login |
+---
 
-### UsuÃ¡rio
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| GET | `/auth/me` | JWT | Dados do usuÃ¡rio logado |
-| POST | `/auth/change-password` | JWT | Trocar senha |
+## Protecoes integradas
 
-### SessÃµes
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| GET | `/sessions` | JWT | Lista sessÃµes ativas |
-| DELETE | `/sessions/:id` | JWT | Revoga sessÃ£o |
-| POST | `/sessions/logout-all` | JWT | Revoga todas |
+O NexusAuth inclui protecoes de seguranca em todas as camadas — nao precisa configurar nada extra.
 
-### LGPD/GDPR
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| GET | `/me/data/export` | JWT | Exporta todos os dados pessoais |
-| DELETE | `/me/data` | JWT | Soft/hard delete (LGPD Art. 18) |
-| POST | `/me/data/consent` | JWT | Registra consentimento |
+| Camada | O que protege |
+|--------|---------------|
+| **Transporte** | HTTPS forcado via HSTS (2 anos, includeSubDomains, preload) |
+| **Headers** | CSP restrito, COOP, CORP, Permissions-Policy, X-Frame-Options: deny |
+| **CORS** | Allowlist explicita — nunca reflete Origin, bloqueia tudo sem configuracao |
+| **Autenticacao** | JWT RS256 com algoritmo fixo `['RS256']`, JTI blacklist no Redis, sessao validada a cada request |
+| **Senhas** | bcrypt 12 rounds + dummy hash anti-timing + validacao contra Have I Been Pwned (k-anonymity) |
+| **Tokens** | Refresh Token Family: se um token revogado for reusado, TODAS as sessoes sao revogadas |
+| **2FA** | TOTP com backup codes, anti-replay (codigo ja usado e bloqueado), segredo encriptado em AES-256-GCM |
+| **Rate Limiting** | 3 camadas: global (100 req/min/IP), por email, por endpoint — lockout de 15min apos 5 falhas |
+| **SSRF** | Bloqueio de IPs privados, metadata services (AWS/GCP/Azure), protocolos perigosos |
+| **Validacao** | Zod + class-validator, body limit 100kb, tokens limitados a 4096 caracteres |
+| **Multi-tenant** | Isolamento por `tenant_id` no JWT, bloqueio de impersonation cross-tenant |
+| **RBAC** | ADMIN, MANAGER, USER com permissoes granulares (`users:read`, `billing:manage`) |
+| **Idempotency** | Header `Idempotency-Key` com SHA-256 body hash, deteccao de JSON circular |
+| **Resiliencia** | Circuit Breaker no Redis (5 falhas = circuito aberto 30s), degradacao graciosa |
+| **Auditoria** | Logs estruturados (Pino) com correlation ID, redact de dados sensiveis, hash chain |
+| **LGPD/GDPR** | Export de dados com checksum SHA-256, soft/hard delete, consentimento granular |
+| **Observabilidade** | Metricas Prometheus, health checks (liveness + readiness), logs JSON |
 
-### Tenant
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/tenant` | JWT | Criar tenant |
-| POST | `/tenant/invite` | JWT + `tenant:manage` | Convidar usuÃ¡rio |
-| POST | `/tenant/invite/accept` | JWT | Aceitar convite |
-| GET | `/tenant/members` | JWT + `users:read` | Listar membros |
+### Anti-enumeracao de usuario
 
-### API Keys
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/api-keys` | JWT | Criar API key |
-| GET | `/api-keys` | JWT | Listar API keys |
-| DELETE | `/api-keys/:id` | JWT | Revogar |
-| GET | `/api-keys/test` | API Key | Testar API key |
+Todas as respostas usam mensagens genericas para impedir atacantes de descobrirem quais emails estao cadastrados:
 
-### Webhooks
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/webhooks` | JWT | Registrar webhook |
-| GET | `/webhooks` | JWT | Listar |
-| PATCH | `/webhooks/:id` | JWT | Atualizar |
-| DELETE | `/webhooks/:id` | JWT | Remover |
-| GET | `/webhooks/:id/deliveries` | JWT | HistÃ³rico de entregas |
+- Login: `"Invalid email or password"` (tanto para senha errada quanto email nao verificado)
+- Registro: `"If this email is not already registered, an account has been created..."`
+- Recuperacao de senha: `"If the email exists, a reset link has been sent"`
+- Magic Link: `"If the email exists, a magic link has been sent"`
+
+---
+
+## Stack Tecnologica
+
+| Camada | Tecnologia |
+|--------|-----------|
+| Runtime | Node.js 20+ |
+| Framework | NestJS 10.4 |
+| Linguagem | TypeScript 5.5 |
+| ORM | Prisma 5.18 (queries parametrizadas) |
+| Banco | PostgreSQL 16 |
+| Cache / Blacklist / Rate Limit | Redis 7 |
+| Hashing | bcrypt 5.1 (12 rounds) |
+| JWT | jsonwebtoken 9.0 (RS256) |
+| Criptografia | AES-256-GCM (TOTP secrets) |
+| 2FA | otplib 12.0 (TOTP) |
+| OAuth2 | passport-google-oauth20, passport-github2 |
+| Validacao | Zod 3.23 + class-validator 0.14 |
+| Documentacao | Swagger/OpenAPI 7.4 |
+| Logs | Pino 9.3 (JSON estruturado) |
+| Metricas | prom-client 15.1 |
+| Seguranca | Helmet 7.1, cookie-parser 1.4 |
+| Container | Docker + Docker Compose |
+
+---
+
+## API — Todos os Endpoints
+
+### Autenticacao
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/auth/register` | Cadastro — envia email de verificacao |
+| POST | `/auth/login` | Login — retorna access + refresh token |
+| POST | `/auth/refresh` | Renova access token (rotation + protecao anti-replay) |
+| POST | `/auth/logout` | Invalida token + revoga sessoes |
+| POST | `/auth/forgot-password` | Solicita link de reset |
+| POST | `/auth/reset-password` | Reseta senha com token |
+| POST | `/auth/verify-email` | Confirma email |
+| POST | `/auth/magic-link` | Solicita Magic Link |
+| POST | `/auth/magic-link/verify` | Valida Magic Link e faz login |
+| POST | `/auth/change-password` | Troca senha (autenticado) |
+| GET | `/auth/me` | Dados do usuario logado |
+| GET | `/auth/google` | Inicia login com Google |
+| GET | `/auth/google/callback` | Callback do Google |
+| GET | `/auth/github` | Inicia login com GitHub |
+| GET | `/auth/github/callback` | Callback do GitHub |
+
+### Autenticacao em 2 Fatores
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/2fa/setup` | Gera segredo e QR code TOTP |
+| POST | `/2fa/verify` | Ativa 2FA (valida primeiro codigo) |
+| POST | `/2fa/disable` | Desativa 2FA |
+| POST | `/2fa/challenge` | Verifica codigo TOTP durante login |
+
+### Sessoes
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/sessions` | Lista todas as sessoes ativas (dispositivo, IP, local) |
+| DELETE | `/sessions/:id` | Revoga uma sessao especifica |
+| POST | `/sessions/logout-all` | Revoga todas as sessoes (exceto atual) |
+
+### LGPD / GDPR
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/me/data/export` | Exporta todos os dados pessoais |
+| DELETE | `/me/data` | Soft delete (anonimiza) ou Hard delete (remove) |
+| POST | `/me/data/consent` | Registra consentimentos (marketing, analytics, etc.) |
+
+### Multi-Tenant
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/tenant` | Cria um novo tenant |
+| POST | `/tenant/invite` | Convida usuario para o tenant (via email) |
+| POST | `/tenant/invite/accept` | Aceita convite de tenant |
+| GET | `/tenant/members` | Lista membros do tenant |
 
 ### Admin
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| POST | `/admin/impersonate/:userId` | JWT + ADMIN | Iniciar impersonation |
-| POST | `/admin/stop-impersonation` | JWT | Parar impersonation |
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/admin/impersonate/:userId` | Admin assume identidade de usuario (auditado) |
+| POST | `/admin/stop-impersonation` | Encerra impersonation |
 
-### Audit Log
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| GET | `/audit-log` | JWT + ADMIN | HistÃ³rico (com tenant isolation) |
+### API Keys
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/api-keys` | Cria chave de API (maximo 10 ativas) |
+| GET | `/api-keys` | Lista chaves |
+| DELETE | `/api-keys/:id` | Revoga chave |
 
-### Infra
-| MÃ©todo | Rota | Auth | DescriÃ§Ã£o |
-|--------|------|------|-----------|
-| GET | `/health/live` | â€” | Liveness probe |
-| GET | `/health/ready` | â€” | Readiness (DB + Redis) |
-| GET | `/health` | â€” | Health completo |
-| GET | `/metrics` | JWT + ADMIN | Prometheus |
-| GET | `/.well-known/jwks.json` | â€” | Chave pÃºblica JWT |
-| GET | `/.well-known/openid-configuration` | â€” | OIDC config |
-| GET | `/docs` | â€” | Swagger UI (dev only) |
+### Webhooks
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| POST | `/webhooks` | Registra endpoint de webhook |
+| GET | `/webhooks` | Lista webhooks |
+| PATCH | `/webhooks/:id` | Atualiza webhook |
+| DELETE | `/webhooks/:id` | Remove webhook |
+| GET | `/webhooks/:id/deliveries` | Historico de entregas (ultimas 20) |
 
----
-
-## ðŸ”„ Fluxos de AutenticaÃ§Ã£o
-
-### Login com 2FA
-```
-App â†’ POST /auth/login (email + senha)
-     â†“
-NexusAuth: bcrypt verify + rate limit + email check
-     â†“ (se 2FA habilitado)
-App â†’ POST /2fa/challenge (TOTP code + challengeToken)
-     â†“
-NexusAuth: verify TOTP + blacklist challenge + cria sessÃ£o
-     â†“
-App: armazena accessToken + refreshToken
-```
-
-### OAuth2 (Google)
-```
-App â†’ GET /auth/google â†’ redirect Google
-     â†“
-Google â†’ /auth/google/callback
-     â†“
-NexusAuth: verifica email verificado â†’ cria/vincula user
-     â†“
-Tokens emitidos
-```
-
-### Magic Link
-```
-App â†’ POST /auth/magic-link (email)
-     â†“
-User recebe email com link Ãºnico (15min)
-     â†“
-App â†’ POST /auth/magic-link/verify (token)
-     â†“
-NexusAuth: cria sessÃ£o â†’ tokens
-```
+### Infraestrutura
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/health/live` | Liveness probe (Kubernetes) |
+| GET | `/health/ready` | Readiness probe (DB + Redis + Circuit Breaker) |
+| GET | `/health` | Health completo |
+| GET | `/metrics` | Metricas Prometheus |
+| GET | `/.well-known/jwks.json` | Chave publica JWT |
+| GET | `/docs` | Swagger UI (apenas desenvolvimento) |
 
 ---
 
-## ðŸ›¡ï¸ SeguranÃ§a
+## Metricas Disponiveis (Prometheus)
 
-### Arquitetura de Defesa em Profundidade (12 camadas)
-
-1. **Transporte:** HTTPS + HSTS preload (2 anos)
-2. **Headers:** Helmet (CSP, HSTS, COOP, CORP) + Permissions-Policy
-3. **CSRF:** double-submit cookie
-4. **Idempotency:** para operaÃ§Ãµes crÃ­ticas
-5. **AutenticaÃ§Ã£o:** JWT RS256 + algorithm whitelist + blacklist + sessÃ£o + 2FA + OAuth
-6. **AutorizaÃ§Ã£o:** Roles + Permissions + Tenant isolation + role whitelist em DTOs
-7. **ValidaÃ§Ã£o:** Zod + class-validator + sanitizaÃ§Ã£o + IP literal block
-8. **Rate Limiting:** Redis distribuÃ­do (IP + email) + progressive lockout
-9. **Criptografia:** bcrypt (12 rounds) + AES-256-GCM + SHA-256 + timingSafeEqual
-10. **Auditoria:** Pino com redact de PII + hash chain + threat intel
-11. **ConcorrÃªncia:** transaÃ§Ãµes atÃ´micas + MAX_CONCURRENT_SESSIONS + inactivity timeout
-12. **LGPD/GDPR:** export/delete/consent + anonymization
-
-### ProteÃ§Ãµes Ativas
-
-| Categoria | ImplementaÃ§Ã£o |
-|-----------|---------------|
-| Brute Force | Rate limit (IP + email), progressive lockout |
-| Credential Stuffing | Rate limit por email, lockout |
-| Token Theft | Blacklist + session validation |
-| 2FA Bypass | Challenge token blacklist + TOTP replay detection |
-| Privilege Escalation | Permission Guard + role whitelist em DTOs |
-| SSRF | IP literal block, metadata services, DNS rebinding |
-| JWT Bypass | Algorithm whitelist + post-verify re-check |
-| SQL Injection | Prisma (parameterized queries) |
-| XSS | CSP estrito, Helmet |
-| CSRF | double-submit cookie |
-| Timing Attack | Dummy hash, constant-time delay |
-| DoS | Body limit, token length limit, rate limiting |
-| Session Fixation | Session validation |
-| DNS Rebinding | IP pinning |
-| User Enumeration | Mensagens genÃ©ricas, timing constante |
-| Race Condition | TransaÃ§Ãµes atÃ´micas com guards |
-| Account Takeover | REQUIRE_EMAIL_VERIFIED |
-| Parallel Sessions | MAX_CONCURRENT_SESSIONS |
-| LGPD/GDPR | Export/delete/consent + redact de PII |
-
-### VariÃ¡veis de SeguranÃ§a
-
-| VariÃ¡vel | DescriÃ§Ã£o | Default |
-|----------|-----------|---------|
-| `ENCRYPTION_KEY` | AES-256-GCM key (64 hex) | obrigatÃ³rio em prod |
-| `MAX_LOGIN_ATTEMPTS` | Tentativas antes de lockout | 5 |
-| `LOCKOUT_DURATION_MINUTES` | DuraÃ§Ã£o inicial do lockout | 15 |
-
-| SESSION_TIMEOUT_HOURS | Timeout absoluto de sessÃ£o | 168 (7 dias) |
-| MAX_CONCURRENT_SESSIONS | MÃ¡ximo de sessÃµes simultÃ¢neas (1 = single-session) | 999 |
-| SESSION_INACTIVITY_HOURS | Timeout de inatividade | 24 |
-| REQUIRE_EMAIL_VERIFIED | Exigir email verificado para login | true |
-| REQUEST_BODY_LIMIT | Tamanho mÃ¡ximo do body | 100kb |
-| TRUST_PROXY_HOPS | Hops de proxy confiÃ¡vel | 0 |
-| CORS_ORIGINS | Origens permitidas (CSV) | â€” |
-| REDIS_FLUSH_TOKEN | Token para FLUSHALL em prod | â€” |
-| CSP_REPORT_ONLY | CSP em modo report-only | false |
-| CSP_REPORT_URI | Endpoint para CSP violations | /api/csp-report |
-| ABUSEIPDB_API_KEY | API key para threat intel (opcional) | â€” |
+| Metrica | Descricao |
+|---------|-----------|
+| `http_requests_total` | Total de requests por metodo, rota e status |
+| `http_request_duration_seconds` | Latencia de resposta (histograma) |
+| `auth_registrations_total` | Total de registros |
+| `auth_logins_total` | Logins (success/failed) |
+| `auth_refresh_tokens_issued_total` | Refresh tokens emitidos |
+| `auth_2fa_enabled_total` | 2FA ativado |
+| `webhooks_dispatched_total` | Webhooks enviados (success/failed) |
 
 ---
 
-## ðŸ“ˆ Observabilidade
+## Variaveis de Ambiente Principais
 
-### MÃ©tricas Prometheus (/metrics)
+| Variavel | Descricao | Padrao |
+|----------|-----------|--------|
+| `NODE_ENV` | Ambiente (development/production/test) | development |
+| `PORT` | Porta da API | 3000 |
+| `DATABASE_URL` | URL do PostgreSQL | — |
+| `REDIS_URL` | URL do Redis | — |
+| `ENCRYPTION_KEY` | Chave AES-256-GCM (64 chars hex) — obrigatoria em producao | — |
+| `CORS_ORIGINS` | Origens permitidas (CSV) — obrigatoria em producao | — |
+| `JWT_ACCESS_EXPIRES_IN` | Expiracao do access token | 15m |
+| `JWT_REFRESH_EXPIRES_IN` | Expiracao do refresh token | 7d |
+| `JWT_ISSUER` | Emissor do token | nexusauth |
+| `REQUIRE_EMAIL_VERIFIED` | Exigir email verificado para login | true |
+| `MAX_LOGIN_ATTEMPTS` | Tentativas ate lockout | 5 |
+| `LOCKOUT_DURATION_MINUTES` | Duracao do lockout | 15 |
+| `SESSION_TIMEOUT_HOURS` | Timeout absoluto de sessao | 168 (7 dias) |
+| `SESSION_INACTIVITY_HOURS` | Timeout de inatividade | 24 |
+| `REQUEST_BODY_LIMIT` | Tamanho maximo do body | 100kb |
+| `TRUST_PROXY_HOPS` | Hops de proxy confiavel | 0 |
 
-| MÃ©trica | Tipo | DescriÃ§Ã£o |
-|---|---|---|
-| http_requests_total | Counter | Requests HTTP por mÃ©todo/rota/status |
-| http_request_duration_seconds | Histogram | LatÃªncia de resposta |
-| uth_registrations_total | Counter | Registros |
-| uth_logins_total | Counter | Logins (success/failed) |
-| uth_refresh_tokens_issued_total | Counter | Refresh tokens emitidos |
-| uth_2fa_enabled_total | Counter | 2FA ativado |
-| webhooks_dispatched_total | Counter | Webhooks enviados (success/failed) |
-
-### Health Checks
-
-| Endpoint | PropÃ³sito |
-|---|---|
-| GET /health/live | Liveness probe (sempre 200) |
-| GET /health/ready | Readiness (200 se DB+Redis OK) |
-| GET /health | Health completo (200 ok / 503 degraded) |
+> Todas as variaveis estao documentadas em `.env.example`
 
 ---
 
-## ðŸ’» Como Rodar Localmente
+## Como Rodar
 
-### 1. Clone e configure
+### Pre-requisitos
+- Docker e Docker Compose
+- Node.js 20+ (para desenvolvimento local sem Docker)
+- OpenSSL (para gerar chaves RSA)
 
-`ash
+### 1. Clone
+
+```bash
 git clone https://github.com/Breno-J-Oliveira/NexusAuth.git
 cd NexusAuth
 cp .env.example .env
-`
+```
 
-Edite o .env com suas credenciais (valores padrÃ£o jÃ¡ funcionam para dev local).
+### 2. Suba com Docker
 
-### 2. Suba tudo com Docker Compose
-
-`ash
+```bash
 docker compose up -d
-`
+```
 
-ServiÃ§os iniciados:
-- **PostgreSQL** na porta 5432
-- **Redis** na porta 6379
-- **NexusAuth API** na porta 3000
-- **App de teste** na porta 4000
+Servicos iniciados: PostgreSQL, Redis, NexusAuth API (porta 3000) e App de Teste (porta 4000).
 
-### 3. Gere as chaves RS256 (se necessÃ¡rio)
+### 3. Gere chaves RS256
 
-`ash
+```bash
 mkdir -p keys
 openssl genrsa -out keys/private.pem 2048
 openssl rsa -in keys/private.pem -pubout -out keys/public.pem
-`
+```
 
-### 4. Rode as migrations
+### 4. Execute as migrations
 
-`ash
+```bash
 docker compose exec api npx prisma migrate deploy
-`
+```
 
-### 5. Acesse a API
+### 5. Acesse
 
 - **API:** http://localhost:3000
 - **Swagger:** http://localhost:3000/docs
 - **Health:** http://localhost:3000/health
-- **MÃ©tricas:** http://localhost:3000/metrics
 - **JWKS:** http://localhost:3000/.well-known/jwks.json
-- **App de teste:** http://localhost:4000
 
 ---
 
-## ðŸš€ Deploy em ProduÃ§Ã£o
+## Deploy em Producao
 
-### Gerando chaves RS256
+### Checklist
+- [ ] `ENCRYPTION_KEY` gerada (use `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+- [ ] `CORS_ORIGINS` com dominios especificos
+- [ ] Chaves RS256 montadas via volume/secret (nunca gere ephemeral keys em producao)
+- [ ] Senhas fortes para PostgreSQL e Redis
+- [ ] `TRUST_PROXY_HOPS=1` se atras de nginx/ALB/Cloudflare
+- [ ] HTTPS configurado no load balancer
+- [ ] Metricas e logs centralizados
 
-`ash
-mkdir -p keys
+### Gerando chaves RS256 para producao
+
+```bash
 openssl genrsa -out keys/private.pem 4096
 openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 chmod 600 keys/private.pem
-chmod 644 keys/public.pem
-`
+```
 
-> Em produÃ§Ã£o, monte as chaves como secrets (volume, Docker secret, k8s secret).
-
-### Checklist PrÃ©-Deploy
-
-- [ ] NODE_ENV=production
-- [ ] ENCRYPTION_KEY configurada (64 hex chars)
-- [ ] CORS_ORIGINS com domÃ­nios especÃ­ficos
-- [ ] MAX_CONCURRENT_SESSIONS definido
-- [ ] REQUIRE_EMAIL_VERIFIED=true
-- [ ] REDIS_FLUSH_TOKEN configurado
-- [ ] Chaves RSA em volume seguro (chmod 600)
-- [ ] PostgreSQL com senha forte
-- [ ] Redis com senha forte
-- [ ] TRUST_PROXY_HOPS correto
-- [ ] HTTPS no load balancer
-- [ ] Logs centralizados ativos
-- [ ] Alertas: falhas auth, token reuse, lockout
-
-### Plataformas Recomendadas
-
-- **Railway** â€” deploy direto do repo
-- **Render** â€” alternativa com free tier
-- **Docker / k8s** â€” imagem pronta para qualquer orchestrator
+> Em producao com multiplas replicas, as chaves DEVEM ser montadas via volume persistente ou Kubernetes secret.
 
 ---
 
-## ðŸ”® PrÃ³ximas AtualizaÃ§Ãµes
+## Estrutura do Projeto
 
-| Item | Status | Prioridade |
-|------|--------|------------|
-| Tabela OAuthAccount (multi-provider dinÃ¢mico) | ðŸ“‹ Planejado | MÃ©dia |
-| Mais provedores OAuth2 (Facebook, Apple, Microsoft) | ðŸ“‹ Planejado | MÃ©dia |
-| Dashboard de webhooks | ðŸ“‹ Planejado | Baixa |
-| Webhook signing com timestamp (replay protection) | ðŸ“‹ Planejado | Alta |
-| JWT key rotation automÃ¡tica | ðŸ“‹ Planejado | Alta |
-| Risk-based authentication | ðŸ“‹ Planejado | Alta |
-| Vault integration para secrets | ðŸ“‹ Planejado | Alta |
-| WAF integration (Cloudflare/AWS) | ðŸ“‹ Planejado | MÃ©dia |
-| SIEM integration | ðŸ“‹ Planejado | MÃ©dia |
-| Argon2id migration | ðŸ“‹ Planejado | Baixa |
-| WebAuthn / Passkeys (FIDO2) | ðŸ“‹ Planejado | MÃ©dia |
-| Bug Bounty program | ðŸ“‹ Planejado | Baixa |
+```
+src/
+├── common/
+│   ├── guards/         JWT, ApiKey, Roles, Throttler
+│   ├── decorators/     @Public, @CurrentUser, @Roles
+│   ├── filters/        Global Exception Filter
+│   ├── interceptors/   Logging (Pino), Metrics, Idempotency
+│   ├── middleware/     Security Headers
+│   ├── pipes/          Zod Validation
+│   └── utils/          Crypto (AES-256-GCM, SHA-256),
+│                       SSRF Guard, HIBP Check,
+│                       Audit Integrity, Lockout, Circuit Breaker
+├── config/             Validacao de ENV (Zod)
+├── modules/
+│   ├── auth/           Login, Refresh, Logout, Register, OAuth, Magic Link
+│   ├── two-factor/     TOTP Setup, Verify, Disable, Challenge
+│   ├── sessions/       Gestao de Sessoes
+│   ├── audit/          Audit Log + Verificacao de Integridade
+│   ├── tenant/         Multi-Tenant + Convites
+│   ├── admin/          Impersonation
+│   ├── webhooks/       Dispatch de Eventos + SSRF Validation
+│   ├── api-keys/       Autenticacao Service-to-Service
+│   ├── oauth/          Estrategias Google + GitHub
+│   ├── jwks/           Endpoint JWKS
+│   ├── health/         Health Checks + Circuit Breaker State
+│   ├── metrics/        Prometheus Metrics
+│   ├── lgpd/           Export/Delete/Consent (LGPD/GDPR)
+│   └── threat-intel/   IP Reputation Scoring
+├── prisma/             PrismaService + Schema
+└── redis/              RedisService (com Circuit Breaker)
+```
 
 ---
 
-## ðŸ‘¤ Autor
+## Roadmap Futuro
+
+| Feature | Status |
+|---------|--------|
+| WebAuthn / Passkeys (FIDO2) | Planejado |
+| JWT Key Rotation Automatica | Planejado |
+| Argon2id (substituir bcrypt) | Planejado |
+| Mais provedores OAuth2 (Apple, Microsoft) | Planejado |
+| Dashboard Admin Web | Planejado |
+| Integracao com Vault (HashiCorp) | Planejado |
+| SIEM Integration (Splunk/Elastic) | Planejado |
+
+---
+
+## Autor
 
 <p align="center">
   <img src="docs/logo/logo 5x5.png" alt="NexusAuth Logo" width="80" height="80" style="border-radius: 50%;">
 </p>
 
-**Breno JosÃ© de Oliveira** â€” Projeto solo (desenvolvimento, design, testes, documentaÃ§Ã£o).
+**Breno Jose de Oliveira** — Desenvolvimento, arquitetura, testes e documentacao.
 
 ---
 
-## ðŸ¤ Contatos e Redes Sociais
+## Contatos e Redes Sociais
 
 <p align="center">
   <a href="https://github.com/Breno-J-Oliveira" target="_blank">
-    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub">
   </a>
   <a href="https://www.linkedin.com/in/breno-j-oliveira-672619352/" target="_blank">
-    <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white">
+    <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn">
   </a>
   <a href="https://www.instagram.com/brenoov" target="_blank">
-    <img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white">
+    <img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram">
   </a>
   <a href="https://x.com/BrenoJOliveira_" target="_blank">
-    <img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white">
+    <img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white" alt="X (Twitter)">
   </a>
 </p>
-
----
-
-## ðŸ“„ DocumentaÃ§Ã£o Adicional
-
-- [docs/RELATORIO_FINAL_SEGURANCA.md](docs/RELATORIO_FINAL_SEGURANCA.md) â€” auditoria de seguranÃ§a completa
-- [docs/GUIA_MELHORIAS_SEGURANCA.md](docs/GUIA_MELHORIAS_SEGURANCA.md) â€” 80+ melhorias sugeridas
-- [docs/IMPLEMENTACAO_MELHORIAS.md](docs/IMPLEMENTACAO_MELHORIAS.md) â€” melhorias jÃ¡ implementadas
-- [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) â€” documentaÃ§Ã£o tÃ©cnica

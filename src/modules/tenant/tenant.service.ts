@@ -234,6 +234,7 @@ export class TenantService {
     // CRITICAL FIX: Reset permissions based on new role to prevent privilege escalation
     const rolePermissions: Record<string, string[]> = {
       ADMIN: ['tenant:manage', 'users:read', 'users:write', 'billing:manage'],
+      MANAGER: ['users:read', 'users:write'],
       USER: [],
     };
 
