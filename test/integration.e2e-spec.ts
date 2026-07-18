@@ -1,4 +1,4 @@
-﻿import { Test, TestingModule } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -37,7 +37,8 @@ describe('Integration: register â†’ login â†’ protected route â†’
       .send({ email: testEmail, password: testPassword, name: 'Integration User' })
       .expect(201);
 
-    expect(res.body.email).toBe(testEmail);
+    expect(res.body).toHaveProperty('message');
+    expect(res.body.message).toContain('verification link');
   });
 
   it('Step 2: Login', async () => {

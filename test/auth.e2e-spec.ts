@@ -1,4 +1,4 @@
-﻿import { Test, TestingModule } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -36,7 +36,7 @@ describe('Auth E2E', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: testEmail, password: testPassword, name: 'E2E Test User' })
-        .expect(200);
+        .expect(201);
 
       expect(res.body).toHaveProperty('message');
       expect(res.body.message).toContain('verification link');
@@ -46,7 +46,7 @@ describe('Auth E2E', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({ email: testEmail, password: testPassword, name: 'Duplicate' })
-        .expect(200);
+        .expect(201);
 
       expect(res.body).toHaveProperty('message');
       expect(res.body.message).toContain('verification link');

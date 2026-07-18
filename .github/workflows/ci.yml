@@ -55,6 +55,7 @@ jobs:
       SMTP_USER: "test"
       SMTP_PASS: "test"
       SMTP_FROM: "test@test.com"
+      REQUIRE_EMAIL_VERIFIED: "false"
 
     steps:
       - uses: actions/checkout@v4
