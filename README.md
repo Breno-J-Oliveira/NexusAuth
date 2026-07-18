@@ -110,41 +110,27 @@ Projeto desenvolvido como **portfolio pessoal** (solo), demonstrando dominio de 
 ## Arquitetura
 
 ```
-                    HTTPS (TLS 1.3)
-                          |
-              +-----------+-----------+
-              |   Load Balancer / WAF |
-              +-----------+-----------+
-                          |
-              +-----------+-----------+
-              |     NexusAuth API     |
-              |   (NestJS + Node.js)  |
-              |                       |
-              |  Middlewares:         |
-              |  Helmet, CORS, CSP    |
-              |  Body Parser          |
-              |  Security Headers     |
-              |                       |
-              |  Guards (ordem):      |
-              |  ThrottlerGuard       |
-              |  JwtAuthGuard         |
-              |  ApiKeyGuard          |
-              |  RolesGuard           |
-              |                       |
-              |  Interceptors:        |
-              |  Logging (Pino)       |
-              |  Metrics (Prometheus) |
-              |  Idempotency          |
-              +-----------+-----------+
-                          |
-            +-------------+-------------+
-            |                           |
-    +-------+-------+           +-------+-------+
-    |  PostgreSQL 16 |           |    Redis 7    |
-    |  (dados)       |           | (cache/black- |
-    |                |           |  list/rate    |
-    |                |           |  limit)       |
-    +----------------+           +---------------+
+Client (Browser / App / Microservice)
+        |
+        | HTTPS + JWT Bearer / API Key
+        |
+        v
+Load Balancer / WAF
+        |
+        | HTTP (trust proxy)
+        |
+        v
+NexusAuth API  :3000
+  |
+  |-- Middlewares:  Helmet, CORS, CSP, Body Parser, Security Headers
+  |-- Guards:       ThrottlerGuard > JwtAuthGuard > ApiKeyGuard > RolesGuard
+  |-- Interceptors: Logging (Pino), Metrics (Prometheus), Idempotency
+  |-- Pipes:        ZodValidation
+  |
+  +----> PostgreSQL 16  (users, sessions, tenants, audit)
+  +----> Redis 7        (cache, blacklist, rate limit, 2fa pending)
+        |
+        +--> SMTP (emails: verify, reset, magic link)
 ```
 
 ---
@@ -448,16 +434,6 @@ src/
 | Dashboard Admin Web | Planejado |
 | Integracao com Vault (HashiCorp) | Planejado |
 | SIEM Integration (Splunk/Elastic) | Planejado |
-
----
-
-## Autor
-
-<p align="center">
-  <img src="docs/logo/logo 5x5.png" alt="NexusAuth Logo" width="80" height="80" style="border-radius: 50%;">
-</p>
-
-**Breno Jose de Oliveira** — Desenvolvimento, arquitetura, testes e documentacao.
 
 ---
 
