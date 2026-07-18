@@ -25,6 +25,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { verifyCaptcha } from '../../common/utils/captcha.util';
 import { z } from 'zod';
 
 const verifyTokenSchema = z.object({
@@ -52,6 +53,16 @@ export class AuthController {
   ) {
     const ipAddress = req.ip || 'unknown';
     await this.authService.checkGenericRateLimit(`ratelimit:register:${ipAddress}`, 5, 300);
+    // C18 FIX: Rate limit by device fingerprint — prevents botnet bypass.
+    // A botnet with 1000 IPs would otherwise create 1000×5=5000 accounts.
+    const fingerprint = req.headers['x-device-fingerprint'] as string || ipAddress;
+    await this.authService.checkGenericRateLimit(`ratelimit:register:fp:${fingerprint}`, 3, 3600);
+    // C18 FIX: Global registration rate limit — caps total registrations system-wide.
+    await this.authService.checkGenericRateLimit('ratelimit:register:global', 50, 60);
+    // C35 FIX: Verify CAPTCHA token before proceeding with registration.
+    // In development without TURNSTILE_SECRET_KEY, verification is skipped (with a warning).
+    // In production, this is REQUIRED to prevent bot account creation.
+    await verifyCaptcha(dto.captchaToken || '', ipAddress);
     return this.authService.register(dto);
   }
 

@@ -14,6 +14,12 @@ import { RedisService } from '../../redis/redis.service';
 
 const IDEMPOTENCY_HEADER = 'idempotency-key';
 const IDEMPOTENCY_TTL = 24 * 60 * 60; // 24h
+// NA9 FIX: For public/anonymous routes, use a much shorter TTL (5 minutes).
+// The 24h TTL for authenticated users is fine (scoped to userId), but for
+// public routes like /auth/login, the cache key uses 'public' scope. A long
+// TTL combined with token-bearing responses could allow token replay if two
+// different users share the same Idempotency-Key within 24h.
+const IDEMPOTENCY_TTL_PUBLIC = 5 * 60; // 5 minutes
 const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
 
 /**
@@ -131,6 +137,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // can hit the SAME cache entry and therefore allow bodyHash mismatch detection
     // (replay vs 409 conflict) to work as intended.
     const userScope = (req.user as any)?.sub ?? 'public';
+    const ttl = userScope === 'public' ? IDEMPOTENCY_TTL_PUBLIC : IDEMPOTENCY_TTL;
     const cacheKey = `idempotency:${userScope}:${method}:${routePath}:${key}`;
 
     const cached = await this.redisService.get(cacheKey);
@@ -176,7 +183,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
               bodyHash,
             });
             this.redisService
-              .set(cacheKey, data, IDEMPOTENCY_TTL)
+              .set(cacheKey, data, ttl)
               .catch((err2) => {
                 this.logger.error(
                   `Failed to cache idempotency response: ${

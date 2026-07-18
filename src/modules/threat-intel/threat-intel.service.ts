@@ -74,16 +74,37 @@ export class ThreatIntelService {
       score += 80;
     }
 
-    // Check 3: Known bad reputation (would call AbuseIPDB in production)
-    // For demo, simulate based on a hash of the IP
-    const hash = this.simpleHash(ipAddress);
-    if (hash % 100 < 5) {
-      reasons.push('abuse_reports');
-      score += 70;
+    // V11 FIX: Removed simulated (fake) abuse_report scoring.
+    // The old implementation blocked 5% of all IPs deterministically via
+    // hash(ip) % 100 < 5. This would block real, legitimate users with
+    // score 70 and `blocked: true` — a self-inflicted DoS.
+    //
+    // Production MUST integrate with real threat intelligence APIs:
+    // AbuseIPDB, MaxMind GeoIP2, Project Honeypot, AlienVault OTX.
+    // Until those are configured, reputation scoring is opt-in and returns
+    // clean results for all IPs except known TOR exit nodes and private IPs.
+
+    // Check 3: AbuseIPDB lookup (requires ABUSEIPDB_API_KEY env var)
+    // SECURITY: This is an optional integration. Without ABUSEIPDB_API_KEY set,
+    // no reputation scoring is applied — all IPs are treated as clean.
+    // Integration guide: https://docs.abuseipdb.com/#check-endpoint
+    if (process.env.ABUSEIPDB_API_KEY) {
+      try {
+        const abuseScore = await this.queryAbuseIPDB(ipAddress);
+        if (abuseScore > 80) {
+          reasons.push('abuse_reports');
+          score += 70;
+        } else if (abuseScore > 50) {
+          reasons.push('abuse_reports_low');
+          score += 20;
+        }
+      } catch (err) {
+        this.logger.warn(`AbuseIPDB lookup failed for ${ipAddress}: ${err instanceof Error ? err.message : 'unknown'}`);
+      }
     }
 
-    // Check 4: Datacenter (bots/scripts often come from these)
-    // (would require ASN lookup via MaxMind or IP2Location)
+    // Check 4: Datacenter detection (requires MaxMind GeoIP2 / ASN database)
+    // Future: integrate with MaxMind or IP2Location for ASN lookups.
     // if (asnLookup(ip) in datacenterAsns) {
     //   reasons.push('datacenter');
     //   score += 30;
@@ -125,6 +146,33 @@ export class ThreatIntelService {
       a === 0 ||
       (a === 169 && b === 254) // link-local / cloud metadata
     );
+  }
+
+  /**
+   * Query AbuseIPDB for an IP's abuse confidence score.
+   * Returns 0-100 (0 = clean, 100 = highly abusive).
+   */
+  private async queryAbuseIPDB(ipAddress: string): Promise<number> {
+    const apiKey = process.env.ABUSEIPDB_API_KEY;
+    if (!apiKey) return 0;
+
+    const res = await fetch(
+      `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ipAddress)}&maxAgeInDays=90`,
+      {
+        headers: {
+          'Key': apiKey,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!res.ok) {
+      throw new Error(`AbuseIPDB returned HTTP ${res.status}`);
+    }
+
+    const data = await res.json() as any;
+    return data?.data?.abuseConfidenceScore ?? 0;
   }
 
   private simpleHash(s: string): number {

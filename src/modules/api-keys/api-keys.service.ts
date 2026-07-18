@@ -104,7 +104,9 @@ export class ApiKeysService {
     return keys.map((k) => ({
       id: k.id,
       name: k.name,
-      keyPrefix: `nxs_live_${k.key.substring(0, 2)}***`,
+      // C5 FIX: Do not expose any characters of the SHA-256 hash.
+      // Even 2 characters allow attackers to correlate keys between listings and logs.
+      keyPrefix: 'nxs_live_**********',
       permissions: k.permissions,
       active: k.active,
       lastUsedAt: k.lastUsedAt,

@@ -117,7 +117,7 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, passwordToCompare);
 
     if (!user) {
-      const randomDelay = Math.floor(Math.random() * 100) + 200;
+      const randomDelay = crypto.randomInt(200, 301);
       await new Promise(resolve => setTimeout(resolve, randomDelay));
       await this.recordFailedLogin(dto.email);
       await this.auditService.log('LOGIN_FAILED', { metadata: { email: dto.email, reason: 'user_not_found' }, ipAddress, userAgent, success: false });
@@ -128,7 +128,7 @@ export class AuthService {
     // SECURITY: Apply the same random delay for OAuth-only accounts as for non-existent users.
     // Prevents timing-based user enumeration (C1 fix).
     if (!user.password) {
-      const randomDelay = Math.floor(Math.random() * 100) + 200;
+      const randomDelay = crypto.randomInt(200, 301);
       await new Promise(resolve => setTimeout(resolve, randomDelay));
       await this.recordFailedLogin(dto.email);
       await this.auditService.log('LOGIN_FAILED', { metadata: { email: dto.email, reason: 'oauth_only_no_password' }, ipAddress, userAgent, success: false });

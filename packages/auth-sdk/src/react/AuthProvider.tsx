@@ -1,31 +1,24 @@
 /**
  * NexusAuth React Provider
  *
- * SECURITY TRADE-OFF — localStorage token storage:
+ * C29 FIX: Tokens are stored IN-MEMORY by default, NOT in localStorage.
+ * This prevents XSS attacks from stealing tokens via document.localStorage.
  *
- * Tokens (access + refresh) are stored in localStorage. This exposes them to
- * any JavaScript running on the page, including XSS attacks. If a third-party
- * library is compromised or user input is not properly sanitized, an attacker
- * could steal tokens via document.localStorage.
+ * Trade-off: tokens are lost on page refresh. For persistent sessions:
+ *   - Use an httpOnly refresh token cookie + BFF proxy endpoint
+ *   - Or use a Service Worker to intercept and attach tokens
  *
- * For production with high sensitivity, consider:
- *   - Storing the refresh token in an httpOnly cookie (requires a proxy endpoint
- *     on the backend to exchange the cookie for an access token)
- *   - Keeping only the access token in memory (lost on page refresh, but never
- *     accessible to XSS)
- *   - Using a service worker to intercept and attach tokens to API requests
- *
- * This SDK uses localStorage for simplicity and developer experience. The
- * trade-off is documented here as a conscious decision — consumers of this SDK
- * should evaluate their threat model before using it in production.
+ * To re-enable localStorage (INSECURE, dev only):
+ *   import { setTokenStoreMode } from '@nexus/auth-sdk';
+ *   setTokenStoreMode('localStorage');
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { NexusAuthClient } from '../client';
 import { AuthTokens, NexusUser, UserProfile, SessionInfo } from '../types';
+import { loadTokens as loadRawTokens, saveTokens as saveRawTokens } from '../tokenStore';
 
-const STORAGE_KEY = 'nexus_auth_tokens';
-const REFRESH_THRESHOLD_MS = 30 * 1000; // refresh 30s before expiry
+const REFRESH_THRESHOLD_MS = 30 * 1000;
 
 interface AuthState {
   user: UserProfile | null;
@@ -58,9 +51,10 @@ export function AuthProvider({ baseUrl, children }: AuthProviderProps) {
     error: null,
   });
 
+  // C29 FIX: Use secure in-memory token store instead of localStorage
   const loadTokens = useCallback((): AuthTokens | null => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = loadRawTokens();
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -69,9 +63,9 @@ export function AuthProvider({ baseUrl, children }: AuthProviderProps) {
 
   const saveTokens = useCallback((tokens: AuthTokens | null) => {
     if (tokens) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
+      saveRawTokens(JSON.stringify(tokens));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      saveRawTokens(null);
     }
   }, []);
 

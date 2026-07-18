@@ -22,6 +22,11 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     // X-Permitted-Cross-Domain-Policies
     res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
 
+    // M39 FIX: Explicit X-Content-Type-Options as defense-in-depth.
+    // Helmet sets this, but repeating it in middleware ensures it cannot be
+    // accidentally removed by a misconfigured Helmet instance.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
     // Clear-Site-Data on logout
     if (req.path === '/auth/logout' && req.method === 'POST') {
       res.setHeader('Clear-Site-Data', '"cache", "cookies", "storage"');

@@ -74,7 +74,10 @@ export class JwtService {
         algorithm: 'RS256',
         expiresIn: this.accessExpiresIn as any,
         issuer: this.issuer,
-        keyid: 'nexusauth-1',
+        // C15 FIX: Dynamic key ID. In production, use a configuration value
+        // or derive from the key fingerprint (SHA-256 of public key).
+        // Key rotation: set JWT_KID env var when rotating keys.
+        keyid: this.configService.get<string>('JWT_KID', 'nexusauth-1'),
         notBefore: 0,
       },
     );
@@ -183,7 +186,8 @@ export class JwtService {
       keys: [
         {
           ...jwk,
-          kid: 'nexusauth-1',
+          // C15 FIX: Use same dynamic kid as signAccessToken for key rotation support.
+          kid: this.configService.get<string>('JWT_KID', 'nexusauth-1'),
           use: 'sig',
           alg: 'RS256',
         },

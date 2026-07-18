@@ -35,7 +35,7 @@ COPY --from=build /app/tsconfig*.json /app/
 # Prepare runtime keys
 RUN mkdir -p /app/keys
 
-USER root
+USER node
 
 CMD sh -c '\
   if [ ! -f /app/keys/private.pem ]; then \

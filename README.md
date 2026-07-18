@@ -437,6 +437,32 @@ src/
 
 ---
 
+## 🔐 Segurança — Auditoria Completa (59/59 Vulnerabilidades Corrigidas)
+
+O NexusAuth passou por **3 rodadas de auditoria de segurança**, vasculhando mais de 70 ficheiros. Todas as **59 vulnerabilidades** identificadas foram corrigidas:
+
+| Severidade | Corrigidas |
+|-----------|-----------|
+| 🔴 Críticas | 14/14 |
+| 🟠 Altas | 24/24 |
+| 🟡 Médias | 14/14 |
+| 🟢 Baixas | 7/7 |
+
+### Destaques de Segurança
+
+- **CAPTCHA** Cloudflare Turnstile no registo (anti-bot)
+- **Rate limit** com 3 camadas: IP + device fingerprint + global
+- **JWT RS256** com kid dinâmico e suporte a key rotation
+- **SDK** com tokens em memória (imune a XSS) e HTTPS obrigatório para JWKS
+- **Senhas** com validação de 115+ palavras fracas (PT/EN/ES)
+- **Cookies** assinados via cookieParser
+- **Headers** CSP, HSTS, X-Content-Type-Options, Permissions-Policy
+- **Docker** containers com USER não-root
+- **JWKS** com proteção anti-Host-Header-Injection
+- **2FA** com lockout progressivo e replay protection
+
+> 📄 Consulte o relatório completo em `docs/SECURITY_AUDIT.md`
+
 ## Contatos e Redes Sociais
 
 <p align="center">

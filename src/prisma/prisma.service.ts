@@ -1,6 +1,19 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 
+/**
+ * C26 FIX: Prisma connection pool control.
+ *
+ * To prevent connection exhaustion under load, set connection_limit in your
+ * DATABASE_URL connection string:
+ *   postgresql://user:pass@host:5432/db?connection_limit=20
+ *
+ * Without this, Prisma defaults to num_physical_cpus * 2 + 1 connections,
+ * which can exhaust PostgreSQL's max_connections (default 100).
+ *
+ * Recommended: 15-25 for production, 5-10 for staging/dev.
+ * Environment variable: PRISMA_CONNECTION_LIMIT (default: 20)
+ */
 @Injectable()
 export class PrismaService
   extends PrismaClient

@@ -9,3 +9,4 @@ export { AuthProvider, AuthProviderProps, useAuthContext } from './react/AuthPro
 export { useAuth } from './react/useAuth';
 export { useSession } from './react/useSession';
 export { useUser } from './react/useUser';
+export { setTokenStoreMode, getTokenStoreMode } from './tokenStore';

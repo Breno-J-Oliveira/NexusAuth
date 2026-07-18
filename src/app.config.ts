@@ -57,6 +57,13 @@ export function configureApp(app: INestApplication): void {
               frameAncestors: ["'none'"],
               // SECURITY: Add upgrade-insecure-requests to force HTTPS
               upgradeInsecureRequests: [],
+              // M42 FIX: CSP violation reporting — set CSP_REPORT_URI env var
+              // to a dedicated endpoint (e.g. https://monitor.teudominio.com/csp-report).
+              // Without this, CSP violations are silently ignored.
+              ...(process.env.CSP_REPORT_URI && {
+                reportUri: process.env.CSP_REPORT_URI,
+                reportTo: process.env.CSP_REPORT_URI,
+              }),
             }
           : {
               defaultSrc: ["'self'"],
@@ -73,6 +80,11 @@ export function configureApp(app: INestApplication): void {
               formAction: ["'self'"],
               baseUri: ["'self'"],
               frameAncestors: ["'none'"],
+              // M42 FIX: Same violation reporting in dev.
+              ...(process.env.CSP_REPORT_URI && {
+                reportUri: process.env.CSP_REPORT_URI,
+                reportTo: process.env.CSP_REPORT_URI,
+              }),
             },
         reportOnly: process.env.CSP_REPORT_ONLY === 'true',
       },
@@ -98,11 +110,20 @@ export function configureApp(app: INestApplication): void {
   app.use(express.json({ limit: bodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
-  // 4. Cookie parser â€” kept for future cookie-based flows and for
+  // 4. Cookie parser — kept for future cookie-based flows and for
   //    any future SameSite=Strict + CSRF strategy. This API today
   //    authenticates exclusively via Authorization: Bearer, so cookies
   //    carry NO auth state.
-  app.use(cookieParser());
+  // B59 FIX: Use a signing secret for cookieParser. Even though cookies
+  // carry no auth state today, signed cookies prevent tampering when
+  // cookie-based features are added later. The secret is required in
+  // production; in dev, a random ephemeral key is used.
+  const cookieSecret = configService.get<string>('COOKIE_SECRET');
+  if (isProd && !cookieSecret) {
+    logger.error('COOKIE_SECRET is required in production. Set a strong random string (64+ chars).');
+    logger.error('Generate: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+  }
+  app.use(cookieParser(cookieSecret || undefined));
 
   // 5. Security headers middleware (Permissions-Policy, Clear-Site-Data)
   const securityHeaders = app.get(SecurityHeadersMiddleware);

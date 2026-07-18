@@ -13,19 +13,33 @@ npm install @nexus/auth-sdk
 ```ts
 import { NexusAuthClient } from '@nexus/auth-sdk';
 
+// Desenvolvimento: HTTP local
 const client = new NexusAuthClient({ baseUrl: 'http://localhost:3000' });
 
-// Login
+// C30 FIX: Produção — usar SEMPRE HTTPS
+const client = new NexusAuthClient({ baseUrl: 'https://auth.teudominio.com' });
+
 const tokens = await client.login('user@example.com', 'password');
-
-// Refresh
 const newTokens = await client.refresh(tokens.refreshToken);
-
-// Perfil
 const me = await client.me(tokens.accessToken);
-
-// Logout
 await client.logout(tokens.accessToken, tokens.refreshToken);
+```
+
+## React Provider
+
+```tsx
+import { AuthProvider } from '@nexus/auth-sdk';
+
+// C29 FIX: Tokens armazenados em memória (não localStorage).
+// Seguro contra XSS. Perdidos ao recarregar a página.
+// Para persistência, usar httpOnly cookie + BFF proxy.
+function App() {
+  return (
+    <AuthProvider baseUrl="https://auth.teudominio.com">
+      <MeuApp />
+    </AuthProvider>
+  );
+}
 ```
 
 ## Middleware Express
@@ -33,13 +47,13 @@ await client.logout(tokens.accessToken, tokens.refreshToken);
 ```ts
 import { expressAuthMiddleware } from '@nexus/auth-sdk';
 
+// C30 FIX: HTTPS obrigatório em produção (não localhost)
 app.use('/api', expressAuthMiddleware({
-  jwksUri: 'http://localhost:3000/.well-known/jwks.json',
+  jwksUri: 'https://auth.teudominio.com/.well-known/jwks.json',
 }));
 
-// Com permissões obrigatórias
 app.use('/admin', expressAuthMiddleware({
-  jwksUri: 'http://localhost:3000/.well-known/jwks.json',
+  jwksUri: 'https://auth.teudominio.com/.well-known/jwks.json',
   requiredPermissions: ['users:read', 'users:write'],
 }));
 ```
@@ -49,55 +63,27 @@ app.use('/admin', expressAuthMiddleware({
 ```ts
 import { NexusAuthGuard, RequireNexusPermissions } from '@nexus/auth-sdk';
 
-// No módulo:
 const guard = new NexusAuthGuard(new Reflector());
-guard.setJwksUri('http://localhost:3000/.well-known/jwks.json');
+// C30 FIX: HTTPS obrigatório em produção
+guard.setJwksUri('https://auth.teudominio.com/.well-known/jwks.json');
 
-// No controller:
 @UseGuards(NexusAuthGuard)
 @RequireNexusPermissions('users:read')
 @Controller('users')
 class UsersController { ... }
 ```
 
-## React Hooks
+## Verificação Manual JWT
 
-```tsx
-import { AuthProvider, useAuth, useUser } from '@nexus/auth-sdk';
+```ts
+import { JwksClient } from '@nexus/auth-sdk';
 
-function App() {
-  return (
-    <AuthProvider baseUrl="http://localhost:3000">
-      <LoginForm />
-    </AuthProvider>
-  );
-}
-
-function LoginForm() {
-  const { login, user, isAuthenticated, loading } = useAuth();
-
-  if (isAuthenticated) return <div>Olá, {user?.name}</div>;
-  return <button onClick={() => login('user@example.com', 'password')}>Login</button>;
-}
+// C30 FIX: HTTPS obrigatório. Em dev (localhost) HTTP é permitido.
+const jwks = new JwksClient('https://auth.teudominio.com/.well-known/jwks.json');
+const user = await jwks.verifyToken(accessToken);
 ```
 
-### Hooks disponíveis
+## Segurança
 
-- `useAuth()` — `{ user, isAuthenticated, loading, error, login(), logout() }`
-- `useSession()` — `{ sessions, loading }` (lista de sessões ativas)
-- `useUser()` — `{ user, refreshUser(), loading }`
-
-## Validação JWT via JWKS
-
-O SDK faz fetch da chave pública do NexusAuth (`/.well-known/jwks.json`) uma vez e cacheia por 1 hora. A validação da assinatura RS256 é feita localmente, sem chamar a API a cada request.
-
-## Segurança — Trade-off do localStorage
-
-**Tokens (access + refresh) são armazenados em `localStorage`.** Isso os expõe a qualquer JavaScript rodando na página, incluindo ataques XSS. Se uma biblioteca de terceiros for comprometida ou um input não for sanitizado, um atacante pode roubar os tokens via `document.localStorage`.
-
-Para produção com alta sensibilidade, considere:
-- Armazenar o **refresh token** em cookie `httpOnly` (exige endpoint proxy no backend)
-- Manter apenas o **access token** em memória (perde no refresh da página, mas inacessível a XSS)
-- Usar um **service worker** para interceptar e anexar tokens às requisições
-
-Este SDK usa `localStorage` por simplicidade e DX. O trade-off é documentado como decisão consciente — avalie seu modelo de ameaças antes de usar em produção.
+- **C29**: Tokens armazenados em memória (não localStorage). XSS não consegue roubá-los.
+- **C30**: HTTPS obrigatório para JWKS em produção. MITM não consegue substituir chave pública.

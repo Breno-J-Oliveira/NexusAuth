@@ -10,12 +10,42 @@ interface CachedKey {
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+/**
+ * C30 FIX: JWKS client with HTTPS enforcement.
+ *
+ * In production (NODE_ENV=production or when running on an HTTPS origin),
+ * JWKS URIs MUST use HTTPS. This prevents MITM attacks that could
+ * substitute the public key and forge JWT tokens.
+ *
+ * Development (localhost / 127.0.0.1 / ::1) is exempt.
+ */
+function enforceHttps(uri: string): void {
+  if (typeof window === 'undefined') return; // server-side — caller's responsibility
+
+  const isLocalhost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '::1';
+
+  if (isLocalhost) return;
+
+  const url = new URL(uri);
+  if (url.protocol !== 'https:') {
+    throw new Error(
+      `[NexusAuth SDK] JWKS URI must use HTTPS in production. Got: ${uri}. ` +
+      'HTTP JWKS endpoints allow MITM attackers to replace the public key and forge JWT tokens.',
+    );
+  }
+}
+
 export class JwksClient {
   private cache: Map<string, CachedKey> = new Map();
   private lastFetch = 0;
   private jwksUri: string;
 
   constructor(jwksUri: string) {
+    // C30 FIX: Reject HTTP JWKS URIs in production
+    enforceHttps(jwksUri);
     this.jwksUri = jwksUri;
   }
 

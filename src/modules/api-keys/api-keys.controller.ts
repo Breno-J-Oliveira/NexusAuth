@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { Request } from 'express';
+import * as crypto from 'crypto';
 import { ApiKeysService } from './api-keys.service';
 import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -68,13 +69,12 @@ export class ApiKeysController {
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Testar autenticação via API key' })
   async test(@CurrentUser() user: any, @Req() req: Request) {
-    // V49 FIX: rate limit API key test endpoint to prevent brute force
+    // NA8 FIX: Rate limit by IP only — do NOT include a hash of the API key
+    // in the Redis key name. The previous implementation used
+    // `ratelimit:apikey-test:{ip}:{keyHash}` which leaked whether a specific
+    // API key hash existed in the rate limiter keyspace.
     const ipAddress = req.ip || 'unknown';
-    const apiKeyHeader = (req.headers['x-api-key'] as string) || '';
-    const keyHash = apiKeyHeader.length > 0
-      ? require('crypto').createHash('sha256').update(apiKeyHeader).digest('hex').substring(0, 16)
-      : 'none';
-    const rlKey = `ratelimit:apikey-test:${ipAddress}:${keyHash}`;
+    const rlKey = `ratelimit:apikey-test:${ipAddress}`;
     const count = await this.redisService.incr(rlKey);
     if (count === 1) await this.redisService.expire(rlKey, 60);
     if (count > 10) {

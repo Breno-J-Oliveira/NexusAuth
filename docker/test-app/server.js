@@ -58,7 +58,13 @@ async function authMiddleware(req, res, next) {
     req.user = await verifyToken(token);
     next();
   } catch (err) {
-    return res.status(401).json({ code: 'TOKEN_INVALID', message: err.message || 'Invalid or expired token' });
+    // C36/C38 FIX: Do not expose internal JWT error messages.
+    // err.message may leak stack traces, key IDs, or algorithm details.
+    console.error('[authMiddleware] Token verification failed:', err.name || 'UnknownError');
+    const msg = err.name === 'TokenExpiredError' ? 'Token has expired'
+      : err.name === 'NotBeforeError'    ? 'Token not yet valid'
+      : 'Invalid or expired token';
+    return res.status(401).json({ code: 'TOKEN_INVALID', message: msg });
   }
 }
 
@@ -115,7 +121,9 @@ app.post('/auth/login', async (req, res) => {
     if (!apiRes.ok) return res.status(apiRes.status).json(data);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to connect to NexusAuth', error: err.message });
+    // SECURITY: Do not expose internal error messages in responses.
+    console.error('[auth/login proxy error]', err.message);
+    res.status(502).json({ message: 'Authentication service unavailable' });
   }
 });
 
