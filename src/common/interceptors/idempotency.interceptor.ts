@@ -163,7 +163,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         res.setHeader('X-Idempotency-Key', key);
         return of(parsed.body);
       } catch (err) {
-        if (err instanceof BadRequestException) {
+        if (err instanceof BadRequestException || err instanceof ConflictException) {
           throw err;
         }
         // Corrupted cache / invalid payload: fall through and re-process

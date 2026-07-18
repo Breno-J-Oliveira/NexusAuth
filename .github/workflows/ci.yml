@@ -85,7 +85,7 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npx jest --config test/jest-e2e.config.ts --forceExit --verbose
+        run: npx jest --config test/jest-e2e.config.ts --forceExit --verbose --runInBand
 
   docker-build:
     name: Docker Build
