@@ -14,6 +14,13 @@ export class RedisService implements OnModuleDestroy {
     halfOpenMaxRequests: 3,
   });
 
+  // C8 FIX: In-memory fallback for incr() when circuit breaker prevents Redis access.
+  // Ensures rate limiting continues to function even when Redis is unavailable.
+  // Entries auto-expire after 60 seconds via setTimeout cleanup.
+  private readonly incrFallback = new Map<string, number>();
+  private readonly incrFallbackTimeouts = new Map<string, NodeJS.Timeout>();
+  private static readonly INCR_FALLBACK_TTL_MS = 60_000;
+
   // SECURITY: Maximum key length to prevent memory attacks
   private readonly MAX_KEY_LENGTH = 1024;
   // SECURITY: Maximum value length to prevent memory attacks
@@ -167,10 +174,32 @@ export class RedisService implements OnModuleDestroy {
 
   async incr(key: string): Promise<number> {
     this.validateKey(key);
-    return this.withCircuitBreaker(
-      () => this.client.incr(key),
-      () => 0, // Fallback: return 0 so rate limiting degrades to allow
-    );
+    try {
+      return await this.withCircuitBreaker(
+        () => this.client.incr(key),
+      );
+    } catch (err) {
+      if (err instanceof CircuitBreakerOpenError) {
+        // C8 FIX: Use in-memory fallback when circuit breaker is open.
+        // This prevents rate limiting from being completely bypassed when Redis is down.
+        const existing = this.incrFallback.get(key);
+        const newCount = (existing ?? 0) + 1;
+        this.incrFallback.set(key, newCount);
+
+        // Clear existing timeout and set new one for auto-expiry
+        const existingTimeout = this.incrFallbackTimeouts.get(key);
+        if (existingTimeout) clearTimeout(existingTimeout);
+
+        this.incrFallbackTimeouts.set(key, setTimeout(() => {
+          this.incrFallback.delete(key);
+          this.incrFallbackTimeouts.delete(key);
+        }, RedisService.INCR_FALLBACK_TTL_MS));
+
+        this.logger.warn(`In-memory incr fallback used for key: ${key} (count: ${newCount})`);
+        return newCount;
+      }
+      throw err;
+    }
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
@@ -196,6 +225,22 @@ export class RedisService implements OnModuleDestroy {
   // This method should NEVER be called in production without explicit admin action
   async flushall(confirmationToken?: string): Promise<void> {
     const nodeEnv = process.env.NODE_ENV;
+
+    // A11 FIX: Rate limit flushall attempts — max 3 per 60 seconds
+    const flushKey = `ratelimit:flushall:attempts`;
+    try {
+      const attempts = await this.client.incr(flushKey);
+      if (attempts === 1) await this.client.expire(flushKey, 60);
+      if (attempts > 3) {
+        this.logger.warn(`FLUSHALL rate limited — ${attempts} attempts in 60s`);
+        throw new Error('Too many FLUSHALL attempts. Wait 60 seconds before retrying.');
+      }
+    } catch (err) {
+      // If Redis is down, still fail safe — don't allow flushall
+      if (err instanceof Error && err.message.includes('Too many')) throw err;
+      this.logger.warn('FLUSHALL blocked — cannot verify rate limit (Redis unavailable)');
+      throw new Error('FLUSHALL blocked — Redis unavailable. Try again later.');
+    }
     
     // SECURITY: Block flushall in production unless explicitly confirmed
     if (nodeEnv === 'production') {

@@ -140,6 +140,7 @@ model RefreshToken {
   @@index([userId])
   @@index([sessionId])
   @@index([expiresAt])
+  @@index([revoked])
 }
 
 model Session {

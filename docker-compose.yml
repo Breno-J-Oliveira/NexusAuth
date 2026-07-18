@@ -25,10 +25,14 @@ services:
     restart: unless-stopped
     # M4 fix: do not expose Redis port to host — only accessible within nexus-net
     command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    environment:
+      # SECURITY: Use REDISCLI_AUTH env var instead of passing password as CLI argument.
+      # CLI arguments are visible in docker inspect, /proc/<pid>/cmdline, and container logs.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

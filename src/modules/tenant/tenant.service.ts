@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +17,8 @@ import { hashToken } from '../../common/utils/crypto.util';
 
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
@@ -146,12 +149,9 @@ export class TenantService {
       },
     });
 
-    // M2 fix: only log invite links in non-production
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(
-        `[Tenant Invite] Link: http://localhost:3000/tenant/invite/accept?token=${rawToken}`,
-      );
-    }
+    // SECURITY: Never log real tokens — even in development (C6 fix).
+    // Tokens logged to centralised systems (CloudWatch, Datadog, ELK) become permanent exposure.
+    this.logger.debug(`Tenant invitation created for ${dto.email} to tenant ${admin.tenantId}`);
 
     await this.auditService.log('TENANT_USER_INVITED', {
       userId,

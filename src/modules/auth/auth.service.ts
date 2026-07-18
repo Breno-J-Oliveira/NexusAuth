@@ -69,9 +69,7 @@ export class AuthService {
       await this.prisma.emailVerification.create({
         data: { userId: user.id, token: hashedToken, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
       });
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Email Verification] Link: http://localhost:3000/auth/verify-email?token=${rawToken}`);
-      }
+      this.logger.debug(`Email verification created for user ${user.id}`);
       await this.auditService.log('REGISTER', { userId: user.id });
       this.metricsService.authRegistrationsTotal.inc();
       await this.webhooksDispatcher.dispatch('user.registered', { userId: user.id, email: user.email, name: user.name }, user.tenantId);
@@ -127,7 +125,14 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' });
     }
 
+    // SECURITY: Apply the same random delay for OAuth-only accounts as for non-existent users.
+    // Prevents timing-based user enumeration (C1 fix).
     if (!user.password) {
+      const randomDelay = Math.floor(Math.random() * 100) + 200;
+      await new Promise(resolve => setTimeout(resolve, randomDelay));
+      await this.recordFailedLogin(dto.email);
+      await this.auditService.log('LOGIN_FAILED', { metadata: { email: dto.email, reason: 'oauth_only_no_password' }, ipAddress, userAgent, success: false });
+      this.metricsService.authLoginsTotal.inc({ status: 'failed' });
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' });
     }
 
@@ -380,9 +385,9 @@ export class AuthService {
       await this.prisma.passwordReset.create({
         data: { userId: user.id, token: hashedToken, expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
       });
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Password Reset] Link: http://localhost:3000/auth/reset-password?token=${rawToken}`);
-      }
+      // SECURITY: Never log real tokens — even in development (C6 fix).
+      // Tokens logged to centralised systems (CloudWatch, Datadog, ELK) become permanent exposure.
+      this.logger.debug(`Password reset created for user ${user.id}`);
       await this.auditService.log('PASSWORD_RESET_REQUESTED', { userId: user.id });
     }
     return { message: 'If the email exists, a reset link has been sent' };
@@ -436,9 +441,7 @@ export class AuthService {
       await this.prisma.magicLink.create({
         data: { userId: user.id, email: dto.email, token: hashedToken, expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
       });
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Magic Link] Login link: http://localhost:3000/auth/magic-link/verify?token=${rawToken}`);
-      }
+      this.logger.debug(`Magic link created for user ${user.id}`);
     }
     return { message: 'If the email exists, a magic link has been sent' };
   }

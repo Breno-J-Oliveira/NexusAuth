@@ -56,9 +56,8 @@ export class HealthService {
           // SECURITY: Don't leak internal error messages to public endpoints
           ...(redis.status === 'rejected' && { error: 'Redis connection failed' }),
         },
-        circuitBreaker: {
-          status: this.redisService.isCircuitOpen() ? 'open' : 'closed',
-        },
+        // C7 FIX: Do not expose internal circuit breaker state on public health endpoint.
+        // Exposing it allows attackers to monitor when Redis is under stress and coordinate attacks.
       },
     };
 

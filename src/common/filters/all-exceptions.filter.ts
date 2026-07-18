@@ -103,7 +103,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message: exception.message,
           path: request.url,
           method: request.method,
-          stack: process.env.NODE_ENV !== 'production' ? exception.stack : undefined,
+          stack: process.env.NODE_ENV === 'development' ? exception.stack : undefined,
         }),
       );
     }

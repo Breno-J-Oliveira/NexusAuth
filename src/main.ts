@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as fs from 'fs';
 import { AppModule } from './app.module';
 import { configureApp } from './app.config';
 import { PrismaService } from './prisma/prisma.service';
@@ -18,6 +19,18 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const logger = new Logger('Bootstrap');
+
+  // C2 FIX: In production, verify persistent JWT keys exist before accepting traffic.
+  // Ephemeral keys in production would break multi-replica JWT verification.
+  if (nodeEnv === 'production') {
+    const privateKeyPath = configService.get<string>('JWT_PRIVATE_KEY_PATH', './keys/private.pem');
+    if (!fs.existsSync(privateKeyPath) || fs.statSync(privateKeyPath).size === 0) {
+      logger.error(`FATAL: JWT private key not found at ${privateKeyPath} in production.`);
+      logger.error('Mount persistent RSA keys via Docker volume or Kubernetes secret.');
+      process.exit(1);
+    }
+    logger.log(`JWT private key verified at ${privateKeyPath}`);
+  }
 
   // Swagger / OpenAPI — disabled in production
   if (nodeEnv !== 'production') {

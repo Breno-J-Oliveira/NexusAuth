@@ -91,6 +91,17 @@ export class JwtAuthGuard implements CanActivate {
         }
       }
 
+      // C9 FIX: Update lastActiveAt on every authenticated request (non-blocking).
+      // Prevents session inactivity timeout while user is actively using the API.
+      if (payload.sessionId) {
+        setImmediate(() => {
+          this.prisma.session.update({
+            where: { id: payload.sessionId },
+            data: { lastActiveAt: new Date() },
+          }).catch(() => {});
+        });
+      }
+
       request.user = payload;
       return true;
     } catch (error) {

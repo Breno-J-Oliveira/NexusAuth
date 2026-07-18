@@ -104,7 +104,7 @@ export class ApiKeysService {
     return keys.map((k) => ({
       id: k.id,
       name: k.name,
-      keyPrefix: `nxs_live_${k.key.substring(0, 4)}***`,
+      keyPrefix: `nxs_live_${k.key.substring(0, 2)}***`,
       permissions: k.permissions,
       active: k.active,
       lastUsedAt: k.lastUsedAt,
