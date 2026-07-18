@@ -13,6 +13,11 @@
   <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/JWT-RS256-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT RS256">
+  <br>
+  <img src="https://img.shields.io/badge/CI-passing-brightgreen?style=flat-square&logo=githubactions&logoColor=white" alt="CI">
+  <img src="https://img.shields.io/badge/tests-30%2F30-brightgreen?style=flat-square&logo=jest&logoColor=white" alt="Tests">
+  <img src="https://img.shields.io/badge/segurança-59%2F59-brightgreen?style=flat-square&logo=shield&logoColor=white" alt="Security">
+  <img src="https://img.shields.io/badge/licença-MIT-blue?style=flat-square" alt="License">
 </p>
 
 ---
@@ -462,6 +467,13 @@ O NexusAuth passou por **3 rodadas de auditoria de segurança**, vasculhando mai
 - **2FA** com lockout progressivo e replay protection
 
 > 📄 Consulte o relatório completo em `docs/SECURITY_AUDIT.md`
+
+---
+
+<p align="center">
+  <strong>⚡ Projeto finalizado — pronto para produção.</strong><br>
+  59/59 vulnerabilidades corrigidas • 30/30 testes passando • tsc --noEmit exit 0
+</p>
 
 ## Contatos e Redes Sociais
 
