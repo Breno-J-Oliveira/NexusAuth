@@ -43,9 +43,16 @@ describe('Auth E2E', () => {
     });
 
     it('should return same message for duplicate email (anti-enumeration)', async () => {
+      // Use unique email to avoid rate limit collision with previous test
+      const uniqueEmail = `e2e-dup-${Date.now()}@test.com`;
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: uniqueEmail, password: testPassword, name: 'First' })
+        .expect(201);
+
       const res = await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ email: testEmail, password: testPassword, name: 'Duplicate' })
+        .send({ email: uniqueEmail, password: testPassword, name: 'Duplicate' })
         .expect(201);
 
       expect(res.body).toHaveProperty('message');

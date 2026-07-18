@@ -56,6 +56,7 @@ jobs:
       SMTP_PASS: "test"
       SMTP_FROM: "test@test.com"
       REQUIRE_EMAIL_VERIFIED: "false"
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
 
     steps:
       - uses: actions/checkout@v4

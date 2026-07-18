@@ -4,6 +4,7 @@ import {
   Injectable,
   NestInterceptor,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { Observable, of } from 'rxjs';
@@ -151,7 +152,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         };
 
         if (parsed.bodyHash !== bodyHash) {
-          throw new BadRequestException({
+          throw new ConflictException({
             code: 'IDEMPOTENCY_KEY_CONFLICT',
             message:
               'Idempotency-Key conflict: request body does not match the cached request',
